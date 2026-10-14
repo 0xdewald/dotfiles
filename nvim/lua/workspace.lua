@@ -60,7 +60,21 @@ end
 function M.save()
   local name = vim.g.workspace_name
   if not name then return end
-  -- Explorer, pickers, terminals etc. don't restore cleanly, so leave them out of the session
+  -- Diffview runs in its own tabs; close those views so they don't come back as plain split tabs
+  if package.loaded["diffview"] then
+    for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+      for _, win in ipairs(vim.api.nvim_tabpage_is_valid(tab) and vim.api.nvim_tabpage_list_wins(tab) or {}) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        if vim.api.nvim_buf_get_name(buf):match("^diffview://") or vim.bo[buf].filetype:match("^Diffview") then
+          vim.api.nvim_set_current_tabpage(tab)
+          pcall(vim.cmd.DiffviewClose)
+          break
+        end
+      end
+    end
+  end
+  -- Explorer, pickers, terminals (incl. Claude) and claudecode's proposed-diff buffers don't
+  -- restore cleanly, so leave them out of the session
   for _, win in ipairs(vim.api.nvim_list_wins()) do
     local buf = vim.api.nvim_win_get_buf(win)
     if vim.bo[buf].buftype ~= "" or vim.bo[buf].filetype:match("^snacks") then

@@ -68,7 +68,15 @@ vim.keymap.set("n", "<C-h>", "<C-w>h")
 vim.keymap.set("n", "<C-j>", "<C-w>j")
 vim.keymap.set("n", "<C-k>", "<C-w>k")
 vim.keymap.set("n", "<C-l>", "<C-w>l")
+-- Same from terminals (Claude, Ctrl-/ shell): leave terminal mode and move in one step
+vim.keymap.set("t", "<C-h>", "<C-\\><C-n><C-w>h")
+vim.keymap.set("t", "<C-j>", "<C-\\><C-n><C-w>j")
+vim.keymap.set("t", "<C-k>", "<C-\\><C-n><C-w>k")
+vim.keymap.set("t", "<C-l>", "<C-\\><C-n><C-w>l")
 vim.keymap.set({ "n", "i" }, "<C-s>", "<cmd>w<CR><Esc>", { desc = "Save" })
+-- Quit everything, back to the shell. Asks about unsaved files; Claude and terminals just stop
+-- (the workspace layout and Claude's conversation are saved and come back next time)
+vim.keymap.set("n", "<leader>qq", "<cmd>confirm qa<CR>", { desc = "Quit Neovim" })
 
 vim.api.nvim_create_autocmd("TextYankPost", {
   callback = function() vim.hl.on_yank() end,
@@ -89,3 +97,5 @@ require("lazy").setup("plugins", {
 })
 
 require("workspace").setup()
+require("review").setup()
+require("agent").autostart()

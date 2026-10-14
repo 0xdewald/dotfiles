@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Claude Code UserPromptSubmit hook: snapshot the working tree so Neovim can diff "what the agent
+# changed this turn" (<leader>rv). Also runnable by hand from inside a repo.
+#
+#   <git dir>/claude-baseline            `git stash create` commit (tracked changes), or HEAD if clean
+#   <git dir>/claude-baseline-untracked  untracked files at that moment, one per line
+#
+# `git stash create` skips untracked files and diffview never lists untracked files when diffing
+# against a commit, so review.lua uses the second file to tell agent-created files apart and marks
+# just those intent-to-add (`git add -N`) before opening the diff.
+# Never prints (hook stdout becomes prompt context) and never fails the prompt.
+set -uo pipefail
+
+dir="${CLAUDE_PROJECT_DIR:-$PWD}"
+if [[ ! -t 0 ]]; then
+  cwd=$(sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+  [[ -n "$cwd" && -d "$cwd" ]] && dir="$cwd"
+fi
+cd "$dir" 2>/dev/null || exit 0
+gitdir=$(git rev-parse --absolute-git-dir 2>/dev/null) || exit 0
+top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+head=$(git rev-parse -q --verify HEAD 2>/dev/null) || exit 0 # no commits yet: nothing to diff against
+
+rev=$(git stash create 2>/dev/null)
+printf '%s\n' "${rev:-$head}" >"$gitdir/claude-baseline"
+git -C "$top" ls-files --others --exclude-standard >"$gitdir/claude-baseline-untracked" 2>/dev/null
+exit 0

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Claude Code SessionStart hook: tells Neovim (nvim/lua/agent.lua) which session its Claude is on,
+# so the next Neovim start resumes the right one, also after /clear. Only acts for Claude started
+# by Neovim (NVIM_CLAUDE_SESSION_FILE set). Prints nothing: hook output would be added to context.
+[[ -n "${NVIM_CLAUDE_SESSION_FILE:-}" ]] || exit 0
+id="$(jq -r '.session_id // empty' 2>/dev/null)"
+[[ -n "$id" ]] && printf '%s\n' "$id" > "$NVIM_CLAUDE_SESSION_FILE"
+exit 0

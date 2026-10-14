@@ -2,19 +2,28 @@
 
 My Neovim setup for Go development (Neovim 0.12+, macOS, Ghostty).
 
+New here? Start with **[GETTING_STARTED.md](GETTING_STARTED.md)**: install, moving around, working with Claude, and reviewing its changes step by step.
+
 ```
 dotfiles/
 ├── install.sh              # one-shot setup script
 ├── README.md
-├── bin/nvp                 # workspace launcher, symlinked to ~/.local/bin/nvp
+├── GETTING_STARTED.md      # step-by-step walkthrough
+├── bin/
+│   ├── nvp                 # workspace launcher, symlinked to ~/.local/bin/nvp
+│   ├── claude-baseline     # Claude Code hook: snapshot before each prompt (symlinked too)
+│   └── claude-session      # Claude Code hook: tells Neovim which session its Claude is on
 └── nvim/                   # symlinked to ~/.config/nvim
     ├── init.lua            # options, keymaps, statuscolumn, lazy.nvim bootstrap
     ├── lazy-lock.json      # pinned plugin versions
-    ├── workspaces/         # one file per multi-repo workspace
+    ├── workspaces/         # your multi-repo workspaces (git-ignored; README.md has an example)
     └── lua/
         ├── workspace.lua   # :Workspace, tab-per-repo sessions, tabline
+        ├── review.lua      # review comments on agent changes, sent to Claude
+        ├── agent.lua       # Claude per folder/workspace: auto-start, resume, sessions; keeps its window in place
         └── plugins/
             ├── ui.lua      # theme, picker, statusline, git, motions
+            ├── ai.lua      # claudecode.nvim (Claude Code in Neovim), diffview.nvim
             ├── go.lua      # treesitter, LSP, completion, format, lint, debug, test
             └── session.lua # persistence.nvim (per-directory sessions)
 ```
@@ -26,7 +35,14 @@ git clone <this-repo> ~/dotfiles   # or copy the folder over
 ~/dotfiles/install.sh
 ```
 
-The script installs everything below, links `~/.config/nvim` to `~/dotfiles/nvim` (and backs up any existing config), puts `~/go/bin` on your PATH, restores plugins at the versions in `lazy-lock.json`, and compiles the treesitter parsers. You can run it again safely.
+The script installs everything below, links `~/.config/nvim` to `~/dotfiles/nvim`, registers two Claude Code hooks, puts `~/go/bin` on your PATH, restores plugins at the versions in `lazy-lock.json`, and compiles the treesitter parsers. Before replacing anything that already exists (an old `~/.config/nvim`, your `~/.claude/settings.json`) it shows what will change and asks, and it backs up what it replaces. You can run it again safely.
+
+```sh
+./install.sh --reinstall   # also redo config that's already in place: relink, re-register hooks,
+                           # optionally reinstall plugins. Still asks before each change.
+./install.sh hooks         # only the Claude Code hooks (add --reinstall to redo them)
+./install.sh --help
+```
 
 Because `~/.config/nvim` is a symlink, any change you make to the config lands in this repo. Commit `lazy-lock.json` after `:Lazy update` so other machines get the same plugin versions.
 
@@ -49,6 +65,7 @@ Because `~/.config/nvim` is a symlink, any change you make to the config lands i
 | Debug | nvim-dap, nvim-dap-go, nvim-dap-view, nvim-dap-virtual-text |
 | Tests | neotest + neotest-golang (gotestsum runner) |
 | Editing | flash.nvim, mini.pairs, mini.surround (`gs` prefix), mini.ai, trouble.nvim |
+| AI / review | claudecode.nvim (Claude Code IDE integration, snacks terminal), diffview.nvim |
 
 **Custom bits in `init.lua`:**
 - A two-number line column (absolute │ relative) with its own colours, using `statuscolumn`. The colours are re-applied on every `ColorScheme` event so the theme doesn't overwrite them. Git and diagnostic signs sit to the left (`%s`).
@@ -56,13 +73,70 @@ Because `~/.config/nvim` is a symlink, any change you make to the config lands i
 
 ## Workspaces
 
-Open several repos at once, one tab per repo: `nvp coworker`.
+Open several repos at once, one tab per repo: `nvp <name>`.
 
-- A workspace is `nvim/workspaces/<name>.lua` returning a list of repo paths. Run `nvp` with no name to list them.
+- A workspace is `nvim/workspaces/<name>.lua` returning a list of repo paths, for example:
+
+  ```lua
+  -- nvim/workspaces/shop.lua → `nvp shop`
+  return {
+    "~/code/shop-api",
+    "~/code/shop-web",
+  }
+  ```
+
+  These files list your own repos, so git ignores them; see [`nvim/workspaces/README.md`](nvim/workspaces/README.md). Run `nvp` with no name to list yours.
 - Each tab has its own working directory (`:tcd`), so pickers, grep, lazygit and git signs follow the repo of the current tab. The tabline shows the repo names and the workspace name.
 - The first open builds the tabs from the file. On exit, the layout (open files, splits, tabs) is saved to `~/.local/state/nvim/workspaces/` and restored next time. After editing the workspace file, run `:WorkspaceReset` to rebuild the tabs from it.
 - Inside Neovim: `<leader>w` switches workspace, `]t` / `[t` move between repo tabs, `:Workspace <name>` opens one.
 - For plain `nvim` in a single folder, persistence.nvim saves a session per directory: `<leader>qs` restores it, `<leader>ql` restores the last one, `<leader>fp` picks a recent project.
+
+## Claude in Neovim
+
+Each folder or workspace has its own Claude session, which lives alongside Neovim:
+
+- **Starts with Neovim** when you open a folder (`nvim`, `nvim .`, `nvim ~/some/repo`) or a workspace (`nvp x`). Opening a single file (`nvim notes.txt`, git commit messages) or starting in your home folder doesn't start Claude; `Space ac` does when you want it.
+- **Resumes next time.** Claude exits when Neovim does, but the conversation is kept, and the next Neovim in that folder or workspace picks it up again. This keeps working after `/clear` inside Claude, thanks to the `SessionStart` hook (`bin/claude-session`).
+- `Space an` starts a fresh session. The old one stays available.
+- `Space al` lists this folder's sessions, newest first, with a preview of the conversation. Enter switches to one, `Ctrl-n` starts a new one, `Ctrl-x` deletes one (asks first).
+- The Claude window stays where it is: if a file would open in it (for example from the explorer when no editor window is open), Claude stays and the file opens beside it. Its width is kept at 35%.
+- Set `vim.g.agent_autostart = false` to turn auto-start off.
+
+In a workspace there's one Claude, named after the workspace, running in the first tab's repo.
+
+## Reviewing agent changes
+
+Run Claude Code inside Neovim, review what it changed, leave line comments, and send them back.
+
+1. Claude runs in a right-hand split (see above; `Space ac` shows or hides it). claudecode.nvim runs the same WebSocket IDE server VS Code uses, so Claude sees your selection, can open files, and proposes edits as diffs (`Space aa` / `Space ad` accept / deny). `Space as` sends a visual selection, `Space ab` adds the current file.
+2. When it's done, `Space rv` diffs **the last agent turn** (working tree vs the snapshot taken when you sent the prompt) and `Space rV` diffs **all changes** vs HEAD. `Space rq` closes the diff.
+3. On any line (or visual range), `Space rc` adds a comment. It shows as a virtual line above the code, also in diffview's right-hand side. `Space rd` deletes and `Space rr` resolves the comment under the cursor; `Space rl` lists them (Enter jumps, `Ctrl-x` deletes, `Ctrl-r` resolves). Comments belong to a review: `Space rn` closes the current one (kept in history), `Space rR` lists reviews to bring one back or delete it, `Space rX` deletes the current one, `Space rt` hides/shows comments.
+4. `Space rs` sends all open comments to Claude as one numbered prompt (`path:lines`, the code, your comment). With more than 5 it writes them to `.git/review.md` and sends a short message pointing at that file. Sent comments are dimmed and marked `(sent)`; if everything was already sent, `Space rs` offers to send it again, and `Space rS` always sends every unresolved comment.
+
+Comments are stored per repo in `.git/review-comments.json`, so they survive restarts and each workspace tab has its own. If the code moves, a comment re-attaches to its original lines by searching for them nearby; if they're gone it stays on the original line number.
+
+**Hooks.** "Last agent turn" needs `bin/claude-baseline`, and session resume needs `bin/claude-session`, both registered as Claude Code hooks in `~/.claude/settings.json`. `install.sh` does this: it shows the change as a diff and only writes it if you answer `y` (the old file is backed up to `settings.json.bak-<timestamp>`). To run just that step: `./install.sh hooks`. The resulting entries:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "~/.local/bin/claude-baseline" }] }
+    ],
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "~/.local/bin/claude-session" }] }
+    ]
+  }
+}
+```
+
+`claude-session` only acts for a Claude that Neovim started; for other Claude sessions it does nothing.
+
+On every prompt it writes `git stash create` (or HEAD when clean) to `.git/claude-baseline` and the list of untracked files to `.git/claude-baseline-untracked`. Neither touches your index or stash. `git stash create` ignores untracked files and diffview doesn't list untracked files when diffing against a commit, so `Space rv` marks files that appeared since the baseline as intent-to-add (`git add -N`) to show them as added. Edits Claude makes to files that were *already* untracked don't show in the turn diff.
+
+**Multi-repo workspaces.** There is one Claude per Neovim (one server, one terminal). It starts in the cwd of the tab you first open it from; toggling it from another tab shows the same session and tells you where it's running. Comments and diffs always use the repo of the current buffer (or tab), and when that isn't Claude's directory the prompt uses absolute paths. The baseline hook only snapshots the repo Claude runs in.
+
+**Per-edit diffs.** claudecode.nvim has no option to skip its proposed-edit diffs, so they're left on. To review only at the end, switch Claude to accept-edits mode (`Shift-Tab` in Claude, or start it with `--permission-mode acceptEdits`) and use `Space rv`.
 
 ## Keymaps
 
@@ -85,9 +159,16 @@ Leader is **Space**. Press it and wait to see everything in which-key.
 | `s` / `S` | Flash jump / flash treesitter select |
 | `gsa` `gsd` `gsr` | Surround: add / delete / replace |
 | `Ctrl-/` | Toggle terminal |
-| `Ctrl-h/j/k/l` | Move between splits |
+| `Ctrl-h/j/k/l` | Move between splits (also from inside terminals) |
 | `Ctrl-s` | Save |
+| `Space qq` | Quit Neovim, Claude and terminals, back to the shell (asks about unsaved files) |
 | `Space n` / `Space bd` | Notification history / delete buffer |
+| `Space ac` / `an` / `al` | Claude: show-hide (starts or resumes this folder's session) / new session / list sessions |
+| `Space af` / `ar` / `aC` / `am` | Claude: focus / Claude's own resume picker / continue last conversation / pick model |
+| `Space as` (visual) / `ab` / `aa` / `ad` | Claude: send selection / add buffer / accept diff / deny diff |
+| `Space rc` / `rl` / `rd` / `rr` / `rs` | Review: comment (line or selection) / list / delete / resolve / send to Claude |
+| `Space rS` / `rn` / `rR` / `rX` / `rt` | Review: send all unresolved again / close review / list reviews / delete review / hide-show comments |
+| `Space rv` / `rV` / `rq` | Review: diff last agent turn / diff all vs HEAD / close diff |
 
 ## Rebuild with an AI instead
 
