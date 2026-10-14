@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Open a Neovim workspace: nvp <name>   (definitions live in nvim/workspaces/<name>.lua)
+set -euo pipefail
+dir="$HOME/.config/nvim/workspaces"
+if [[ $# -eq 0 ]]; then
+  echo "usage: nvp <workspace>"
+  echo "workspaces:"
+  for f in "$dir"/*.lua; do [[ -e "$f" ]] && echo "  $(basename "$f" .lua)"; done
+  exit 1
+fi
+exec nvim +"Workspace $1"

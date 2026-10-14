@@ -1,0 +1,4 @@
+.DS_Store
+*.swp
+# Workspaces list your own repos; keep them local (see nvim/workspaces/README.md)
+nvim/workspaces/*.lua
