@@ -90,7 +90,7 @@ return {
     event = "VeryLazy",
     opts = {
       options = {
-        theme = "catppuccin",
+        theme = "catppuccin-nvim", -- follows the active flavour (latte/mocha)
         globalstatus = true,
         component_separators = "",
         section_separators = { left = "", right = "" },
