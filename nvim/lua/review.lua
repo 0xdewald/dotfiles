@@ -428,9 +428,37 @@ function M.toggle()
 end
 
 -- Diff the working tree against the snapshot bin/claude-baseline took when the last prompt was sent
+-- Repos the current context could mean: where Claude runs, the tab's folder, the open file's repo.
+-- They differ when e.g. a tab was switched to another folder with a file of the old one still open.
+local function candidates()
+  local list, seen = {}, {}
+  local function add(repo)
+    if repo and not seen[repo] then seen[repo] = true; table.insert(list, repo) end
+  end
+  if vim.g.claude_cwd then add(repo_at(vim.g.claude_cwd)) end
+  add(repo_at(vim.fn.getcwd()))
+  add(M.repo())
+  return list
+end
+
+-- The repo Claude worked in most recently: newest .git/claude-baseline among the candidates
+local function turn_repo()
+  local best, newest
+  for _, repo in ipairs(candidates()) do
+    local st = vim.uv.fs_stat(repo.gitdir .. "/claude-baseline")
+    if st and (not newest or st.mtime.sec > newest) then best, newest = repo, st.mtime.sec end
+  end
+  return best
+end
+
 function M.diff_turn()
-  local repo = M.repo()
-  if not repo then return vim.notify("Review: not in a git repo", vim.log.levels.WARN) end
+  local repo = turn_repo()
+  if not repo then
+    local c = candidates()[1]
+    return vim.notify("Review: no Claude baseline in " .. (c and vim.fn.fnamemodify(c.root, ":~") or "this folder")
+      .. " (is the UserPromptSubmit hook set up?)", vim.log.levels.WARN)
+  end
+  vim.notify("Review: last Claude turn in " .. vim.fn.fnamemodify(repo.root, ":~"))
   local f = io.open(repo.gitdir .. "/claude-baseline")
   local rev = f and vim.trim(f:read("*a"))
   if f then f:close() end
@@ -452,7 +480,8 @@ function M.diff_turn()
 end
 
 function M.diff_all()
-  local repo = M.repo()
+  local repo = candidates()[1]
+  if repo then vim.notify("Review: all changes in " .. vim.fn.fnamemodify(repo.root, ":~")) end
   vim.cmd("DiffviewOpen" .. (repo and " -C" .. vim.fn.fnameescape(repo.root) or ""))
 end
 
