@@ -186,6 +186,15 @@ go install golang.org/x/tools/cmd/goimports@latest
 go install github.com/go-delve/delve/cmd/dlv@latest
 go install gotest.tools/gotestsum@latest
 
+say "Claude Code (runs in Neovim's Claude split)"
+if command -v claude >/dev/null || [[ -x "$HOME/.local/bin/claude" ]]; then
+  echo "Already installed: $("$(command -v claude || echo "$HOME/.local/bin/claude")" --version 2>/dev/null)"
+elif ask "Claude Code isn't installed. Install it with the official installer (curl -fsSL https://claude.ai/install.sh | bash)?"; then
+  curl -fsSL https://claude.ai/install.sh | bash
+else
+  echo "Skipped. Install it later from https://claude.com/claude-code, then run: claude"
+fi
+
 say "Linking $NVIM_TARGET -> $DOTFILES/nvim"
 link_nvim_config
 

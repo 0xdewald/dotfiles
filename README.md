@@ -51,6 +51,8 @@ Because `~/.config/nvim` is a symlink, any change you make to the config lands i
 
 **CLI tools (Homebrew):** neovim, go, ripgrep, fd, lazygit, tree-sitter-cli, golangci-lint, jq
 
+**Claude Code:** installed with the official installer if it's missing (asks first).
+
 **Shell (Homebrew):** fzf, zsh-autosuggestions, zsh-syntax-highlighting, zoxide; fzf-tab (cloned to `~/.local/share/zsh/fzf-tab`, pinned in `install.sh`)
 
 **Go tools (`go install`):** gopls, gofumpt, goimports, dlv (delve), gotestsum
