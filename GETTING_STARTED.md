@@ -16,7 +16,9 @@ The script installs Neovim, Go and the tools, links `~/.config/nvim` to this rep
 
 Already installed and want to redo the setup, for example after pulling changes? `./install.sh --reinstall` redoes the config that's already in place (the link, the hooks, and optionally the plugins), and still asks before each change.
 
-Open a new terminal afterwards so the updated `PATH` takes effect. Your terminal needs a Nerd Font for the icons (Ghostty has one built in).
+It also offers to add one line to `~/.zshrc` that loads the shell setup: Tab menus you can search (try `git checkout <Tab>`), grey suggestions as you type (`→` accepts), and `Ctrl-R` / `Ctrl-T` / `Option-C` for history, files and folders.
+
+Open a new terminal afterwards so the updated `PATH` and shell setup take effect. Your terminal needs a Nerd Font for the icons (Ghostty has one built in).
 
 ## 2. Find your way around the screen
 

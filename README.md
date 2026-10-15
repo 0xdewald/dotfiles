@@ -9,6 +9,7 @@ dotfiles/
 ├── install.sh              # one-shot setup script
 ├── README.md
 ├── GETTING_STARTED.md      # step-by-step walkthrough
+├── zsh/init.zsh            # shell setup, loaded from ~/.zshrc (completion menus, suggestions, fzf keys)
 ├── bin/
 │   ├── nvp                 # workspace launcher, symlinked to ~/.local/bin/nvp
 │   ├── claude-baseline     # Claude Code hook: snapshot before each prompt (symlinked too)
@@ -48,7 +49,9 @@ Because `~/.config/nvim` is a symlink, any change you make to the config lands i
 
 ## What's installed
 
-**CLI tools (Homebrew):** neovim, go, ripgrep, fd, lazygit, tree-sitter-cli, golangci-lint
+**CLI tools (Homebrew):** neovim, go, ripgrep, fd, lazygit, tree-sitter-cli, golangci-lint, jq
+
+**Shell (Homebrew):** fzf, zsh-autosuggestions, zsh-syntax-highlighting, zoxide; fzf-tab (cloned to `~/.local/share/zsh/fzf-tab`, pinned in `install.sh`)
 
 **Go tools (`go install`):** gopls, gofumpt, goimports, dlv (delve), gotestsum
 
@@ -70,6 +73,19 @@ Because `~/.config/nvim` is a symlink, any change you make to the config lands i
 **Custom bits in `init.lua`:**
 - A two-number line column (absolute │ relative) with its own colours, using `statuscolumn`. The colours are re-applied on every `ColorScheme` event so the theme doesn't overwrite them. Git and diagnostic signs sit to the left (`%s`).
 - System clipboard, persistent undo, rounded borders on floating windows, highlight on yank, and `~/go/bin` added to PATH inside Neovim.
+
+## Shell (zsh)
+
+`zsh/init.zsh` is loaded from `~/.zshrc` (`install.sh` adds that one line after showing the diff; `./install.sh shell` runs just that step). Secrets and machine-specific settings stay in `~/.zshrc`.
+
+- **Tab opens a searchable menu** (fzf-tab): type to filter, `<` / `>` switch groups. `git checkout <Tab>` lists branches first, with each one's latest commit and a log preview; modified files only come up when nothing else matches, because checking out a file throws away its changes. Works for git, make targets, gh, brew, and `pm2 restart/logs/... <Tab>` lists your processes.
+- **Grey suggestions** while you type (zsh-autosuggestions), predicted from what you usually run after the previous command, then from history. `→` accepts.
+- **fzf keys:** `Ctrl-R` search history, `Ctrl-T` pick files, `Option-C` jump to a folder. A grey reminder sits on the right of the prompt.
+- **`z <part of a name>`** jumps to a folder you visit often (zoxide).
+- Commands turn red while typing if they don't exist (zsh-syntax-highlighting).
+- History keeps 50,000 commands, shared between open terminals.
+
+For `Option` keys to work as `Alt` in Ghostty, set `macos-option-as-alt = true` (`Option-C` also works without it).
 
 ## Workspaces
 
