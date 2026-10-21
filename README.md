@@ -13,7 +13,9 @@ dotfiles/
 ├── bin/
 │   ├── nvp                 # workspace launcher, symlinked to ~/.local/bin/nvp
 │   ├── claude-baseline     # Claude Code hook: snapshot before each prompt (symlinked too)
-│   └── claude-session      # Claude Code hook: tells Neovim which session its Claude is on
+│   ├── claude-session      # Claude Code hook: tells Neovim which session its Claude is on
+│   └── crew-hook           # Claude Code hook: reports crew agents' activity to the board
+├── crew/                   # crew: the agent board (Go; CLI, HTTP API, MCP server), see crew/README.md
 └── nvim/                   # symlinked to ~/.config/nvim
     ├── init.lua            # options, keymaps, statuscolumn, lazy.nvim bootstrap
     ├── lazy-lock.json      # pinned plugin versions
@@ -21,6 +23,7 @@ dotfiles/
     └── lua/
         ├── workspace.lua   # :Workspace, tab-per-repo sessions, tabline
         ├── review.lua      # review comments on agent changes, sent to Claude
+        ├── crew.lua        # crew client: agent dashboard, open an agent, route review comments
         ├── agent.lua       # Claude per folder/workspace: auto-start, resume, sessions; keeps its window in place
         └── plugins/
             ├── ui.lua      # theme, picker, statusline, git, motions
@@ -75,6 +78,19 @@ Because `~/.config/nvim` is a symlink, any change you make to the config lands i
 **Custom bits in `init.lua`:**
 - A two-number line column (absolute │ relative) with its own colours, using `statuscolumn`. The colours are re-applied on every `ColorScheme` event so the theme doesn't overwrite them. Git and diagnostic signs sit to the left (`%s`).
 - System clipboard, persistent undo, rounded borders on floating windows, highlight on yank, and `~/go/bin` added to PATH inside Neovim.
+
+## Crew (v0.1.1, in progress)
+
+A local board for running several Claude agents side by side, each in its own checkout ("slot") on its own branch. The board (`crew`, a Go binary in `crew/`) keeps track of work items, agents, slots, branches, messages and comments. Hooks report agent activity to it. Neovim is one client; the CLI, a local HTTP API and an MCP server are the others, so a custom app can replace the Neovim side later. Details and all commands: [`crew/README.md`](crew/README.md).
+
+What works so far (milestone 1):
+- `crew slot add`, `crew ticket add "read jira ticket VD-123 …"`, `crew item new`, `crew agent start <item>` starts a background Claude on `agent/<ticket>` in a free slot, with its own ports and process-name prefix.
+- `Space mm` opens the crew dashboard: agents with status, stage, branch and last message, refreshed every few seconds. Enter opens the agent in a new tab, with its session in the Claude split. `Ctrl-s` sends it a message, `Ctrl-x` stops it.
+- Review comments (`Space rc`, `Space rs`) on an agent's branch go to the board, which hands them to that agent: straight into the Claude split if it's open in Neovim, otherwise by resuming it in the background.
+- When an agent finishes a turn you get a macOS notification ("crew: Fuzzy Muffins is done").
+- `Space rN` reviews a range of commits.
+
+Not yet: the tech lead, plan reviews, the reviewer agent and the director chat (milestones 2 to 4).
 
 ## Shell (zsh)
 
@@ -185,6 +201,8 @@ Leader is **Space**. Press it and wait to see everything in which-key.
 | `Space af` / `ar` / `aC` / `am` | Claude: focus / Claude's own resume picker / continue last conversation / pick model |
 | `Space as` (visual) / `ab` / `aa` / `ad` | Claude: send selection / add buffer / accept diff / deny diff |
 | `Space rc` / `rl` / `rd` / `rr` / `rs` | Review: comment (line or selection) / list / delete / resolve / send to Claude |
+| `Space rN` | Review: diff a range of commits (last n, or since a commit/branch) |
+| `Space mm` / `ms` | Crew: dashboard of agents / board status |
 | `Space rS` / `rn` / `rR` / `rX` / `rt` | Review: send all unresolved again / close review / list reviews / delete review / hide-show comments |
 | `Space rv` / `rV` / `rq` | Review: diff last agent turn / diff all vs HEAD / close diff |
 

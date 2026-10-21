@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Claude Code hook (UserPromptSubmit, Stop, Notification): reports agent activity to the crew
+# board (crew/), e.g. "Fuzzy Muffins is done". `crew event` ignores sessions that aren't crew
+# agents. Prints nothing: hook output would be added to Claude's context.
+crew="$(command -v crew || echo "$HOME/.local/bin/crew")"
+[[ -x "$crew" ]] || exit 0
+"$crew" event --hook >/dev/null 2>&1
+exit 0

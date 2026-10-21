@@ -291,6 +291,14 @@ function M.send_comments(repo, list)
     reanchor(repo, c, file_lines(repo, c))
     table.insert(open, c)
   end
+  -- On a crew agent's branch, the board delivers them to that agent (lua/crew.lua)
+  local has_crew, crew = pcall(require, "crew")
+  if has_crew and crew.route(repo, open) then
+    for _, c in ipairs(open) do c.status = "sent" end
+    save(repo)
+    render_repo(repo)
+    return
+  end
   local ok, term = pcall(require, "claudecode.terminal")
   if not (ok and term.get_active_terminal_bufnr()) then
     return vim.notify("Review: Claude isn't running (<leader>ac to start it)", vim.log.levels.WARN)

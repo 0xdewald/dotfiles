@@ -49,6 +49,9 @@ backup() {
 HOOKS=(
   "UserPromptSubmit|~/.local/bin/claude-baseline" # snapshot before each prompt, for Space rv
   "SessionStart|~/.local/bin/claude-session"      # tells Neovim which session its Claude is on
+  "UserPromptSubmit|~/.local/bin/crew-hook"       # crew board: agent is working
+  "Stop|~/.local/bin/crew-hook"                   # crew board: agent is done (notifies you)
+  "Notification|~/.local/bin/crew-hook"           # crew board: agent needs input
 )
 
 # Register the hooks in ~/.claude/settings.json. Shows the change as a diff and only writes it
@@ -58,6 +61,7 @@ install_claude_hooks() {
   mkdir -p "$HOME/.local/bin" "$HOME/.claude"
   ln -sf "$DOTFILES/bin/claude-baseline" "$HOME/.local/bin/claude-baseline"
   ln -sf "$DOTFILES/bin/claude-session" "$HOME/.local/bin/claude-session"
+  ln -sf "$DOTFILES/bin/crew-hook" "$HOME/.local/bin/crew-hook"
 
   local tmp; tmp="$(mktemp -d)"
   mkdir -p "$tmp/a" "$tmp/b"
@@ -201,6 +205,9 @@ link_nvim_config
 say "Linking nvp (workspace launcher) into ~/.local/bin"
 mkdir -p "$HOME/.local/bin"
 ln -sf "$DOTFILES/bin/nvp" "$HOME/.local/bin/nvp"
+
+say "Building crew (agent board) into ~/.local/bin"
+(cd "$DOTFILES/crew" && go build -o "$HOME/.local/bin/crew" ./cmd/crew) && "$HOME/.local/bin/crew" init
 
 say "Registering Claude Code hooks (review baseline for Space rv, session tracking for Space al)"
 install_claude_hooks

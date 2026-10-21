@@ -99,3 +99,4 @@ require("lazy").setup("plugins", {
 require("workspace").setup()
 require("review").setup()
 require("agent").autostart()
+require("crew").setup()

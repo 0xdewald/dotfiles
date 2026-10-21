@@ -139,6 +139,7 @@ return {
         { "<leader>x", group = "trouble" },
         { "<leader>b", group = "buffer" },
         { "<leader>q", group = "session/quit" },
+        { "<leader>m", group = "crew" },
         { "<leader>a", group = "ai" },
         { "<leader>r", group = "review" },
       },
