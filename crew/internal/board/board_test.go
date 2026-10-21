@@ -174,7 +174,7 @@ func TestAgentStart(t *testing.T) {
 		t.Fatalf("calls = %d", len(calls))
 	}
 	c := calls[0]
-	want := []string{"--bg", "--session-id", a.SessionID, "-n", a.Name, "--permission-mode", "acceptEdits"}
+	want := []string{"--bg", "-n", a.Name, "--permission-mode", "acceptEdits"}
 	if !slices.Equal(c.Args, want) {
 		t.Fatalf("args = %q, want %q", c.Args, want)
 	}
@@ -183,7 +183,7 @@ func TestAgentStart(t *testing.T) {
 	}
 	slug := strings.ToLower(strings.ReplaceAll(a.Name, " ", "-"))
 	for k, v := range map[string]string{
-		"CREW_PORT_OFFSET": "100", "CREW_PROCESS_PREFIX": slug + "-", "CREW_SESSION_ID": a.SessionID,
+		"CREW_PORT_OFFSET": "100", "CREW_PROCESS_PREFIX": slug + "-",
 		"CREW_AGENT_ID": fmt.Sprint(a.ID), "CREW_HOME": b.Home,
 	} {
 		if c.Env[k] != v {
@@ -456,12 +456,6 @@ func TestDocuments(t *testing.T) {
 	}
 }
 
-func TestBgID(t *testing.T) {
-	if got := bgID("8798868b-f0d7-4c3c-bbb5-9eed9a2c927c"); got != "8798868b" {
-		t.Errorf("got %q", got)
-	}
-}
-
 func TestAgentStartUntrustedFolder(t *testing.T) {
 	b, _, f, _, _, it := startSetup(t)
 	os.WriteFile(f.Path, []byte("#!/bin/sh\necho 'Workspace not trusted. Run `claude` in this folder once.' >&2\nexit 1\n"), 0o755)
@@ -477,5 +471,70 @@ func TestAgentStartUntrustedFolder(t *testing.T) {
 	}
 	if it, _ = b.Item(it.ID); it.AgentID != nil || it.Stage != "queued" {
 		t.Fatalf("item: %+v", it)
+	}
+}
+
+// claude --bg ignores --session-id and picks its own; crew must store that one
+func TestAgentStartUsesClaudesSessionID(t *testing.T) {
+	b, _, _, _, _, it := startSetup(t)
+	a, err := b.StartAgent(StartOpts{ItemID: it.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(a.SessionID, "-0000-4000-8000-000000000000") || a.BgID != a.SessionID[:8] {
+		t.Fatalf("session %q bg %q: not the id claude reported", a.SessionID, a.BgID)
+	}
+	if !hook(t, b, "Stop", a.SessionID, writeTranscript(t, "done")) {
+		t.Fatal("Stop hook for the real session id wasn't matched")
+	}
+}
+
+// An agent that never got a prompt has no conversation: delivery starts it fresh instead
+func TestDeliverStartsFreshWithoutConversation(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	a, err := b.StartAgent(StartOpts{ItemID: it.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook(t, b, "Stop", a.SessionID, writeTranscript(t, ""))
+	script, _ := os.ReadFile(f.Path)
+	os.WriteFile(f.Path, []byte(strings.Replace(string(script), "n=$(ls",
+		"if [ \"$2\" = \"--resume\" ]; then echo 'No conversation found with session ID' >&2; exit 1; fi\nn=$(ls", 1)), 0o755)
+	if _, err := b.PostMessage(PostOpts{To: a.Name, Text: "start on the ticket"}); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.Calls(t)
+	last := calls[len(calls)-1].Args
+	if last[0] != "--bg" || last[1] != "-n" || last[len(last)-1] != "start on the ticket" {
+		t.Fatalf("expected a fresh start with the message, got %q", last)
+	}
+	a2, _ := b.AgentByID(a.ID)
+	if a2.SessionID == a.SessionID || a2.Status != StatusWorking {
+		t.Fatalf("agent not moved to the new session: %+v", a2)
+	}
+}
+
+// A session started for an agent (env CREW_AGENT_ID) that crew doesn't know moves the agent to it
+func TestHookFollowsNewSession(t *testing.T) {
+	b, _, _, _, _, it := startSetup(t)
+	a, err := b.StartAgent(StartOpts{ItemID: it.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hook(t, b, "SessionStart", a.SessionID, "") {
+		t.Fatal("SessionStart for a known session not handled")
+	}
+	if a, _ = b.AgentByID(a.ID); a.Status != StatusIdle {
+		t.Fatalf("status after SessionStart = %s", a.Status)
+	}
+	if hook(t, b, "Stop", "11111111-2222-3333-4444-555555555555", "") {
+		t.Fatal("unknown session without CREW_AGENT_ID was handled")
+	}
+	t.Setenv("CREW_AGENT_ID", fmt.Sprint(a.ID))
+	if !hook(t, b, "SessionStart", "11111111-2222-3333-4444-555555555555", "") {
+		t.Fatal("new session for the agent not followed")
+	}
+	if a, _ = b.AgentByID(a.ID); a.SessionID != "11111111-2222-3333-4444-555555555555" {
+		t.Fatalf("session = %s", a.SessionID)
 	}
 }

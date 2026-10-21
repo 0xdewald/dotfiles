@@ -21,7 +21,7 @@ func setup(t *testing.T) (*board.Board, *board.Agent, *httptest.Server) {
 	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
 	root := t.TempDir()
 	fake := filepath.Join(root, "claude")
-	os.WriteFile(fake, []byte("#!/bin/sh\necho abc123\n"), 0o755)
+	os.WriteFile(fake, []byte("#!/bin/sh\nif [ \"$1\" = agents ]; then echo '[{\"sessionId\":\"abc12345-0000-4000-8000-000000000000\",\"kind\":\"background\"}]'; exit 0; fi\necho \"backgrounded · abc12345 · agent\"\n"), 0o755)
 	t.Setenv("CREW_CLAUDE", fake)
 	slot := filepath.Join(root, "slot")
 	if out, err := exec.Command("git", "init", "-b", "main", slot).CombinedOutput(); err != nil {

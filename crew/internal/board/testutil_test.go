@@ -39,15 +39,26 @@ type Fake struct {
 	Path, Dir string
 }
 
+// Like the real claude: --bg picks the session id itself (printing "backgrounded · <short>"),
+// --bg --resume keeps it, and `agents --json` lists background sessions.
 const fakeScript = `#!/bin/sh
 d="@DIR@"
+if [ "$1" = "agents" ]; then
+  printf '['; sep=''
+  [ -f "$d.bgs" ] && while read id cwd; do printf '%s{"sessionId":"%s-0000-4000-8000-000000000000","cwd":"%s","kind":"background"}' "$sep" "$id" "$cwd"; sep=','; done < "$d.bgs"
+  printf ']\n'; exit 0
+fi
 n=$(ls "$d" | wc -l | tr -d ' ')
 n=$((n + 1))
 mkdir -p "$d/$n"
 for a in "$@"; do printf '%s\0' "$a"; done > "$d/$n/args"
 env | grep '^CREW_' | sort > "$d/$n/env"
 pwd -P > "$d/$n/cwd"
-if [ "$1" = "--bg" ]; then echo "Started background session · id: bg$n"; fi
+if [ "$1" = "--bg" ]; then
+  if [ "$2" = "--resume" ]; then id=$(echo "$3" | cut -c1-8); else id=$(printf '%08x' $((2684354560 + n))); fi
+  echo "$id $(pwd -P)" >> "$d.bgs"
+  echo "backgrounded · $id · agent (idle — send a prompt to start)"
+fi
 `
 
 // FakeCall is one recorded claude invocation.

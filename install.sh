@@ -49,6 +49,7 @@ backup() {
 HOOKS=(
   "UserPromptSubmit|~/.local/bin/claude-baseline" # snapshot before each prompt, for Space rv
   "SessionStart|~/.local/bin/claude-session"      # tells Neovim which session its Claude is on
+  "SessionStart|~/.local/bin/crew-hook"           # crew board: agent's session started (follows new ids)
   "UserPromptSubmit|~/.local/bin/crew-hook"       # crew board: agent is working
   "Stop|~/.local/bin/crew-hook"                   # crew board: agent is done (notifies you)
   "Notification|~/.local/bin/crew-hook"           # crew board: agent needs input

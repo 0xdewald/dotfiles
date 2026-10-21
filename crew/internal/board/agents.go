@@ -13,6 +13,18 @@ import (
 	"github.com/0xdewald/dotfiles/crew/internal/names"
 )
 
+// startArgs starts a new background session for an agent.
+func startArgs(name, mode, model, prompt string) []string {
+	args := []string{"--bg", "-n", name, "--permission-mode", mode}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	if prompt != "" {
+		args = append(args, prompt)
+	}
+	return args
+}
+
 // Roles and their claude --permission-mode.
 var Roles = map[string]string{
 	"worker":   "acceptEdits",
@@ -245,14 +257,17 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 	if len(msgs) > 0 {
 		prompt = strings.TrimSpace(prompt + "\n\n" + combine(msgs))
 	}
-	args := []string{"--bg", "--session-id", sid, "-n", name, "--permission-mode", mode}
-	if o.Model != "" {
-		args = append(args, "--model", o.Model)
+	args := startArgs(name, mode, o.Model, prompt)
+	var out string
+	out, err = b.Exec.Claude(dir, b.agentEnv(a), args...)
+	var bg string
+	if err == nil {
+		if bg = parseBackgrounded(out); bg == "" {
+			err = fmt.Errorf("claude --bg: no session id in its output: %s", strings.TrimSpace(out))
+		} else if sid, err = b.fullSessionID(dir, bg); err != nil {
+			b.Exec.Claude(dir, nil, "stop", bg)
+		}
 	}
-	if prompt != "" {
-		args = append(args, prompt)
-	}
-	_, err = b.Exec.Claude(dir, b.agentEnv(a), args...)
 	if err != nil {
 		// It never ran: undo the start completely so it doesn't linger on the board
 		b.DB.Exec(`UPDATE messages SET to_agent_id = NULL WHERE to_agent_id = ? AND status = 'pending'`, aid)
@@ -266,14 +281,12 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 		}
 		return nil, err
 	}
-	bg := bgID(a.SessionID)
-
 	tx, err = b.DB.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE agents SET bg_id = ?, updated = ? WHERE id = ?`, bg, b.now(), aid); err != nil {
+	if _, err := tx.Exec(`UPDATE agents SET session_id = ?, bg_id = ?, updated = ? WHERE id = ?`, sid, bg, b.now(), aid); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(`UPDATE work_items SET agent_id = ?, updated = ? WHERE id = ?`, aid, b.now(), item.ID); err != nil {
@@ -345,7 +358,6 @@ func (b *Board) agentEnv(a *Agent) []string {
 	return []string{
 		"CREW_AGENT_ID=" + strconv.FormatInt(a.ID, 10),
 		"CREW_AGENT_NAME=" + a.Name,
-		"CREW_SESSION_ID=" + a.SessionID,
 		"CREW_HOME=" + b.Home,
 		"CREW_PORT_OFFSET=" + strconv.Itoa(a.PortOffset),
 		"CREW_PROCESS_PREFIX=" + names.Slug(a.Name) + "-",

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -30,13 +31,23 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 	}
 	a, err := b.AgentBySession(p.SessionID)
 	if errors.Is(err, ErrNotFound) {
-		return false, nil
+		// A session crew doesn't know yet, started for one of its agents (claude passes its env to
+		// hooks, and crew starts agents with CREW_AGENT_ID): a fresh background start, a resume
+		// that became a copy, /clear, or the agent opened in Neovim. Follow it to the new session.
+		a, err = b.followSession(p.SessionID)
+		if errors.Is(err, ErrNotFound) {
+			return false, nil
+		}
 	}
 	if err != nil {
 		return false, err
 	}
 	data := map[string]any{"hook": p.Event}
 	switch p.Event {
+	case "SessionStart":
+		if a.Status == StatusStarting || a.Status == StatusStopped {
+			err = b.setStatus(a.ID, StatusIdle, nil) // ready and waiting for a prompt
+		}
 	case "UserPromptSubmit":
 		err = b.setStatus(a.ID, StatusWorking, nil)
 	case "Stop":
@@ -71,6 +82,23 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 		err = eerr
 	}
 	return true, err
+}
+
+// followSession moves the agent named by $CREW_AGENT_ID onto session sid.
+func (b *Board) followSession(sid string) (*Agent, error) {
+	id, err := strconv.ParseInt(os.Getenv("CREW_AGENT_ID"), 10, 64)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	a, err := b.AgentByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := b.DB.Exec(`UPDATE agents SET session_id = ?, updated = ? WHERE id = ?`, sid, b.now(), id); err != nil {
+		return nil, err
+	}
+	b.Event("agent.session", &id, a.ItemID, map[string]any{"from": a.SessionID, "to": sid})
+	return b.AgentByID(id)
 }
 
 // LastAssistantText returns the text of the last assistant message in a

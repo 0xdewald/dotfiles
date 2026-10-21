@@ -22,7 +22,7 @@ func env(t *testing.T) string {
 		os.Unsetenv(k)
 	}
 	fake := filepath.Join(root, "claude")
-	os.WriteFile(fake, []byte("#!/bin/sh\necho \"$@\" >> \""+root+"/calls\"\necho bg42\n"), 0o755)
+	os.WriteFile(fake, []byte("#!/bin/sh\nif [ \"$1\" = agents ]; then echo '[{\"sessionId\":\"abc12345-0000-4000-8000-000000000000\",\"kind\":\"background\"}]'; exit 0; fi\necho \"$@\" >> \""+root+"/calls\"\necho \"backgrounded · abc12345 · agent\"\n"), 0o755)
 	t.Setenv("CREW_CLAUDE", fake)
 	return root
 }

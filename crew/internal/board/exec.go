@@ -2,10 +2,13 @@ package board
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // Exec is everything the board runs outside the DB. Tests may swap parts.
@@ -69,12 +72,34 @@ func appleQuote(s string) string {
 	return `"` + s + `"`
 }
 
-// bgID is the short id `claude stop` and `claude attach` take for a background session: the
-// first 8 characters of its session id (what `claude agents` lists). crew picks the session id
-// itself, so this doesn't depend on parsing `claude --bg` output.
-func bgID(sessionID string) string {
-	if len(sessionID) < 8 {
-		return sessionID
+// claude --bg prints "backgrounded · <short id> · <name> …". It chooses the session id itself
+// (it ignores --session-id), so this line is where crew learns it.
+var backgroundedRe = regexp.MustCompile(`backgrounded\s*·\s*([0-9a-f]{8})\b`)
+
+func parseBackgrounded(out string) string {
+	if m := backgroundedRe.FindStringSubmatch(out); m != nil {
+		return m[1]
 	}
-	return sessionID[:8]
+	return ""
+}
+
+// fullSessionID looks up the full session id for a background short id in `claude agents --json`.
+func (b *Board) fullSessionID(dir, short string) (string, error) {
+	for try := 0; try < 10; try++ {
+		out, err := b.Exec.Claude(dir, nil, "agents", "--json", "--all")
+		if err == nil {
+			var list []struct {
+				SessionID string `json:"sessionId"`
+			}
+			if json.Unmarshal([]byte(out), &list) == nil {
+				for _, s := range list {
+					if strings.HasPrefix(s.SessionID, short) {
+						return s.SessionID, nil
+					}
+				}
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return "", fmt.Errorf("claude agents doesn't list background session %s", short)
 }

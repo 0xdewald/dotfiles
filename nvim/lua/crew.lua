@@ -35,7 +35,6 @@ local function agent_env(a)
   return {
     CREW_AGENT_ID = tostring(a.id),
     CREW_AGENT_NAME = a.name,
-    CREW_SESSION_ID = a.session_id,
     CREW_HOME = vim.env.CREW_HOME or (vim.env.HOME .. "/.local/share/crew"),
     CREW_PORT_OFFSET = tostring(a.port_offset or 0),
     CREW_PROCESS_PREFIX = slug(a.name) .. "-",
@@ -65,24 +64,54 @@ local function deliver_pending()
   end
 end
 
--- Open an agent: a new tab in its folder, its session resumed in the Claude split. The board marks
--- it attached, so new messages come here instead of resuming it in the background.
+local function same_dir(x, y) return (vim.uv.fs_realpath(x) or x) == (vim.uv.fs_realpath(y) or y) end
+
+-- Go to a tab already in dir; true when there was one
+local function goto_tab(dir)
+  for i, tab in ipairs(vim.api.nvim_list_tabpages()) do
+    if same_dir(vim.fn.getcwd(-1, i), dir) then
+      vim.api.nvim_set_current_tabpage(tab)
+      return true
+    end
+  end
+  return false
+end
+
+-- Claude writes a conversation file once a session gets its first prompt
+local function has_conversation(a)
+  local file = ("%s/.claude/projects/%s/%s.jsonl"):format(vim.env.HOME, (a.dir:gsub("[^%w]", "-")), a.session_id)
+  return vim.uv.fs_stat(file) ~= nil
+end
+
+-- Open an agent: its folder's tab (or a new one), its conversation resumed in the Claude split.
+-- The board marks it attached, so new messages come here instead of resuming it in the background.
 function M.open(a)
   if not (a.dir and a.dir ~= "" and vim.fn.isdirectory(a.dir) == 1) then
     return notify(a.name .. " has no folder on this machine", vim.log.levels.WARN)
   end
   local agent = require("agent")
+  -- already open here: just go to it
+  if attached() and attached().id == a.id and agent.claude_buf() then
+    goto_tab(a.dir)
+    require("claudecode.terminal").ensure_visible({})
+    return
+  end
   detach()
   agent.stop()
   -- the session may still be running in the background; stop it there before resuming it here
   if a.bg_id and a.bg_id ~= "" then
     vim.system({ vim.env.CREW_CLAUDE or "claude", "stop", a.bg_id }):wait()
   end
-  vim.cmd("tabnew")
-  vim.cmd.tcd(vim.fn.fnameescape(a.dir))
+  if not goto_tab(a.dir) then
+    vim.cmd("tabnew")
+    vim.cmd.tcd(vim.fn.fnameescape(a.dir))
+  end
   local ok, err = M.run({ "agent", "attach-mark", tostring(a.id), "on" })
   if not ok and err then return notify(err, vim.log.levels.ERROR) end
-  agent.start(a.session_id, { track = false, env = agent_env(a), agent = a, name = a.name })
+  -- An agent that never got a prompt has nothing to resume: start a fresh session. Its
+  -- SessionStart hook tells the board the new id (crew follows CREW_AGENT_ID).
+  local sid = has_conversation(a) and a.session_id or nil
+  agent.start(sid, { track = false, env = agent_env(a), agent = a, name = a.name })
   notify(("%s · %s · %s"):format(a.name, a.branch or "?", vim.fn.fnamemodify(a.dir, ":~")))
 end
 
