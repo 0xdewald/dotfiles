@@ -179,6 +179,9 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkSlotDir(slot.Path); err != nil {
+		return nil, fmt.Errorf("slot %s: %w", slot.Name, err)
+	}
 	dir := slot.Path
 	if item.Repo != "" {
 		if st, err := os.Stat(filepath.Join(slot.Path, item.Repo)); err == nil && st.IsDir() {

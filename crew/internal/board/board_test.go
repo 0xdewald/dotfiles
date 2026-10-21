@@ -70,9 +70,36 @@ func TestItemDefaultsFromTicket(t *testing.T) {
 	}
 }
 
+func TestSlotDirChecks(t *testing.T) {
+	b, _ := newBoard(t)
+	dir := t.TempDir()
+	if _, err := b.AddSlot("missing", dir+"/nope", -1); err == nil || !strings.Contains(err.Error(), "git clone") {
+		t.Fatalf("missing folder: %v", err)
+	}
+	os.Mkdir(dir+"/empty", 0o755)
+	if _, err := b.AddSlot("empty", dir+"/empty", -1); err == nil {
+		t.Fatal("folder without a checkout accepted")
+	}
+	git(t, dir, "init", "-q", "multi/core")
+	if _, err := b.AddSlot("multi", dir+"/multi", -1); err != nil {
+		t.Fatalf("folder holding a checkout: %v", err)
+	}
+	git(t, dir, "init", "-q", "--bare", "origin.git")
+	s, err := b.AddSlotClone("cloned", dir+"/slots/one/core", dir+"/origin.git", -1)
+	if err != nil || s.Path != dir+"/slots/one/core" {
+		t.Fatalf("clone: %v %+v", err, s)
+	}
+	if _, err := b.AddSlotClone("again", dir+"/slots/one/core", dir+"/origin.git", -1); err == nil {
+		t.Fatal("clone into an existing folder accepted")
+	}
+}
+
 func TestSlotLeasing(t *testing.T) {
 	b, _ := newBoard(t)
 	dir := t.TempDir()
+	for _, d := range []string{"a", "b", "c"} {
+		git(t, dir, "init", "-q", d)
+	}
 	s1, err := b.AddSlot("a", dir+"/a", -1)
 	if err != nil {
 		t.Fatal(err)

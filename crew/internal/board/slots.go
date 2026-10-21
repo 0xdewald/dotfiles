@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 )
 
@@ -32,6 +33,9 @@ func (b *Board) AddSlot(name, path string, portOffset int) (*Slot, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkSlotDir(abs); err != nil {
+		return nil, err
+	}
 	if portOffset < 0 {
 		var n int
 		if err := b.DB.QueryRow(`SELECT COUNT(*) FROM slots`).Scan(&n); err != nil {
@@ -44,6 +48,51 @@ func (b *Board) AddSlot(name, path string, portOffset int) (*Slot, error) {
 	}
 	b.Event("slot.add", nil, nil, map[string]any{"slot": name, "path": abs, "port_offset": portOffset})
 	return b.Slot(name)
+}
+
+// AddSlotClone clones url into path (which must not exist yet), then adds it as a slot.
+func (b *Board) AddSlotClone(name, path, url string, portOffset int) (*Slot, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(abs); err == nil {
+		return nil, fmt.Errorf("%s already exists; leave out --clone to use it as it is", abs)
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return nil, err
+	}
+	if _, err := b.Exec.Git(filepath.Dir(abs), "clone", "--quiet", url, abs); err != nil {
+		return nil, fmt.Errorf("git clone %s: %w", url, err)
+	}
+	return b.AddSlot(name, abs, portOffset)
+}
+
+// A slot is a git checkout, or a folder holding checkouts (one per repo)
+func checkSlotDir(dir string) error {
+	hint := fmt.Sprintf("clone a repo there first (git clone <url> %s), or use: crew slot add NAME %s --clone <url>", dir, dir)
+	st, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("%s doesn't exist: %s", dir, hint)
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("%s isn't a folder", dir)
+	}
+	if isRepo(dir) {
+		return nil
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.IsDir() && isRepo(filepath.Join(dir, e.Name())) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s isn't a git checkout and holds none: %s", dir, hint)
+}
+
+func isRepo(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, ".git"))
+	return err == nil
 }
 
 func (b *Board) Slot(name string) (*Slot, error) {

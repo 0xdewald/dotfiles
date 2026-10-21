@@ -253,11 +253,17 @@ func (a *app) slot(sub string, args []string) error {
 	case "add":
 		fs := flag.NewFlagSet("slot add", flag.ContinueOnError)
 		off := fs.Int("port-offset", -1, "port offset (default 100 × slot count)")
+		clone := fs.String("clone", "", "clone this repo URL into PATH first")
 		pos, err := parse(fs, args, 2)
 		if err != nil {
 			return err
 		}
-		s, err := a.b.AddSlot(pos[0], pos[1], *off)
+		var s *board.Slot
+		if *clone != "" {
+			s, err = a.b.AddSlotClone(pos[0], pos[1], *clone, *off)
+		} else {
+			s, err = a.b.AddSlot(pos[0], pos[1], *off)
+		}
 		if err != nil {
 			return err
 		}
