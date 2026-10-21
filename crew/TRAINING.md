@@ -95,6 +95,13 @@ slot slot-one /Users/you/agents/slot-one/my-service (port offset 0)
 next: allow Claude to work there once with `crew slot trust slot-one`
 ```
 
+crew also writes the slot's **Claude permissions** into `.claude/settings.local.json` in its checkout (kept out of git through the repo's local exclude list):
+- its agent may read and edit anything in its own slot without asking, and is denied every other slot;
+- it works in the slot's checkout directly, on its `agent/…` branch, instead of moving into a git worktree (Claude's default for background sessions);
+- it may commit and push `agent/…` branches, and may never push to `main`, `master` or `develop` or force-push. Deny rules hold in every permission mode.
+
+Slots added before crew did this: run `crew slot permissions` once.
+
 **Allow Claude to work in the slot (once per slot).** Claude Code only starts background sessions in folders you've trusted. This opens Claude in the slot so you can accept its prompt:
 
 ```sh

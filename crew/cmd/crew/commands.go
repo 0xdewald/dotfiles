@@ -270,7 +270,22 @@ func (a *app) slot(sub string, args []string) error {
 		}
 		return a.out(s, func() {
 			fmt.Fprintf(a.stdout, "slot %s %s (port offset %d)\n", s.Name, s.Path, s.PortOffset)
+			fmt.Fprintf(a.stdout, "permissions: its agents may read and edit %s, and not the other slots (%s)\n", s.Path, board.PermissionsFile)
 			fmt.Fprintf(a.stdout, "next: allow Claude to work there once with `crew slot trust %s`\n", s.Name)
+		})
+	case "permissions":
+		// (re)write every slot's Claude permission rules, e.g. for slots added before crew did this
+		if _, err := parse(flag.NewFlagSet("slot permissions", flag.ContinueOnError), args, 0); err != nil {
+			return err
+		}
+		files, err := a.b.WriteSlotPermissions()
+		if err != nil {
+			return err
+		}
+		return a.out(files, func() {
+			for _, f := range files {
+				fmt.Fprintln(a.stdout, "wrote", f)
+			}
 		})
 	case "trust":
 		// Claude Code only starts background sessions in folders you've trusted. Open it there
@@ -340,7 +355,7 @@ func (a *app) slot(sub string, args []string) error {
 		}
 		return a.out(s, func() { fmt.Fprintf(a.stdout, "slot %s released\n", s.Name) })
 	}
-	return usageError{"slot: add | ls | trust | lease | release"}
+	return usageError{"slot: add | ls | trust | permissions | lease | release"}
 }
 
 // ---- agents

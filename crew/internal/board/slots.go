@@ -47,6 +47,9 @@ func (b *Board) AddSlot(name, path string, portOffset int) (*Slot, error) {
 		return nil, fmt.Errorf("slot %s: %w", name, err)
 	}
 	b.Event("slot.add", nil, nil, map[string]any{"slot": name, "path": abs, "port_offset": portOffset})
+	if _, err := b.WriteSlotPermissions(); err != nil {
+		b.Event("slot.permissions_error", nil, nil, map[string]any{"error": err.Error()})
+	}
 	return b.Slot(name)
 }
 

@@ -707,3 +707,57 @@ func TestWorkerPermissionModeOverride(t *testing.T) {
 		t.Fatalf("args = %q", args)
 	}
 }
+
+// Each slot's agents may read and edit their own slot, and are denied every other slot
+func TestSlotPermissions(t *testing.T) {
+	b, _ := newBoard(t)
+	dir := t.TempDir()
+	for _, d := range []string{"one", "two"} {
+		git(t, dir, "init", "-q", d)
+	}
+	os.MkdirAll(dir+"/one/.claude", 0o755)
+	os.WriteFile(dir+"/one/.claude/settings.local.json", []byte(`{"model":"opus","permissions":{"allow":["Bash(make test)"]}}`), 0o644)
+	b.AddSlot("one", dir+"/one", -1)
+	b.AddSlot("two", dir+"/two", -1)
+	read := func(slot string) (allow, deny []string, other map[string]any) {
+		raw, err := os.ReadFile(dir + "/" + slot + "/.claude/settings.local.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var s struct {
+			Model       string `json:"model"`
+			Permissions struct{ Allow, Deny []string }
+		}
+		json.Unmarshal(raw, &s)
+		other = map[string]any{"model": s.Model}
+		return s.Permissions.Allow, s.Permissions.Deny, other
+	}
+	abs := func(p string) string { return "//" + strings.TrimPrefix(dir, "/") + "/" + p + "/**" }
+	allow, deny, other := read("one")
+	if !slices.Contains(allow, "Edit("+abs("one")+")") || !slices.Contains(allow, "Read("+abs("one")+")") {
+		t.Fatalf("one allow = %q", allow)
+	}
+	if !slices.Contains(deny, "Read("+abs("two")+")") || slices.Contains(deny, "Read("+abs("one")+")") {
+		t.Fatalf("one deny = %q", deny)
+	}
+	if !slices.Contains(deny, "Bash(git push --force*)") || !slices.Contains(allow, "Bash(git push origin agent/*)") {
+		t.Fatalf("git rules missing: allow %q deny %q", allow, deny)
+	}
+	if !slices.Contains(allow, "Bash(make test)") || other["model"] != "opus" {
+		t.Fatal("dropped settings that crew didn't write")
+	}
+	if _, deny, _ = read("two"); !slices.Contains(deny, "Read("+abs("one")+")") {
+		t.Fatalf("two deny = %q", deny)
+	}
+	// rewriting doesn't duplicate rules, and the file stays out of git
+	b.WriteSlotPermissions()
+	if raw, _ := os.ReadFile(dir + "/one/.claude/settings.local.json"); !strings.Contains(string(raw), `"bgIsolation": "none"`) {
+		t.Fatal("worktree isolation not turned off")
+	}
+	if allow, _, _ = read("one"); len(allow) != 3+len(gitAllow) {
+		t.Fatalf("rules duplicated: %q", allow)
+	}
+	if st := git(t, dir+"/one", "status", "--porcelain", "--untracked-files=all"); strings.Contains(st, "settings.local.json") {
+		t.Fatalf("permissions file shows up in git status: %s", st)
+	}
+}

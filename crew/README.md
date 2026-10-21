@@ -23,7 +23,7 @@ crew ticket add [--jira KEY] [--text TEXT|-] [free text...]   # "read jira ticke
 crew ticket show ID|KEY | ls
 crew item new --ticket ID [--title T] [--repo R] [--branch B]  # branch defaults to agent/<key|id>
 crew item ls [--stage S] | show ID | move ID STAGE [--force]
-crew slot add NAME PATH [--clone URL] [--port-offset N] | ls | trust NAME | lease NAME --agent ID | release NAME
+crew slot add NAME PATH [--clone URL] [--port-offset N] | ls | trust NAME | permissions | lease NAME --agent ID | release NAME
 crew agent start ITEM [--slot S] [--role worker] [--model M] [--name N] [--prompt P]
 crew agent ls | show ID|NAME | show --session SID | show --branch B [--repo R]
 crew agent stop ID | background ID [--continue] [--prompt P] | revive ID [--prompt P]
