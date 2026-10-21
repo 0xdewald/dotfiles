@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -267,7 +268,33 @@ func (a *app) slot(sub string, args []string) error {
 		if err != nil {
 			return err
 		}
-		return a.out(s, func() { fmt.Fprintf(a.stdout, "slot %s %s (port offset %d)\n", s.Name, s.Path, s.PortOffset) })
+		return a.out(s, func() {
+			fmt.Fprintf(a.stdout, "slot %s %s (port offset %d)\n", s.Name, s.Path, s.PortOffset)
+			fmt.Fprintf(a.stdout, "next: allow Claude to work there once with `crew slot trust %s`\n", s.Name)
+		})
+	case "trust":
+		// Claude Code only starts background sessions in folders you've trusted. Open it there
+		// so you can accept its prompt yourself; crew never accepts it for you.
+		pos, err := parse(flag.NewFlagSet("slot trust", flag.ContinueOnError), args, 1)
+		if err != nil {
+			return err
+		}
+		s, err := a.b.Slot(pos[0])
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(a.stdout, "Opening Claude in %s.\nIf it asks whether to trust this folder, accept, then type /exit.\n\n", s.Path)
+		claude := os.Getenv("CREW_CLAUDE")
+		if claude == "" {
+			claude = "claude"
+		}
+		cmd := exec.Command(claude)
+		cmd.Dir, cmd.Stdin, cmd.Stdout, cmd.Stderr = s.Path, os.Stdin, os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("claude: %w", err)
+		}
+		fmt.Fprintf(a.stdout, "\nDone. Agents can now start in slot %s.\n", s.Name)
+		return nil
 	case "ls":
 		if _, err := parse(flag.NewFlagSet("slot ls", flag.ContinueOnError), args, 0); err != nil {
 			return err
@@ -313,7 +340,7 @@ func (a *app) slot(sub string, args []string) error {
 		}
 		return a.out(s, func() { fmt.Fprintf(a.stdout, "slot %s released\n", s.Name) })
 	}
-	return usageError{"slot: add | ls | lease | release"}
+	return usageError{"slot: add | ls | trust | lease | release"}
 }
 
 // ---- agents

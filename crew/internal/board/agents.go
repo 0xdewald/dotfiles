@@ -254,11 +254,16 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 	}
 	_, err = b.Exec.Claude(dir, b.agentEnv(a), args...)
 	if err != nil {
-		b.DB.Exec(`UPDATE agents SET status = ?, updated = ? WHERE id = ?`, StatusStopped, b.now(), aid)
+		// It never ran: undo the start completely so it doesn't linger on the board
 		b.DB.Exec(`UPDATE messages SET to_agent_id = NULL WHERE to_agent_id = ? AND status = 'pending'`, aid)
 		b.DB.Exec(`UPDATE slots SET leased_by = NULL WHERE leased_by = ?`, aid)
 		b.DB.Exec(`DELETE FROM branch_locks WHERE agent_id = ?`, aid)
+		b.DB.Exec(`DELETE FROM agents WHERE id = ?`, aid)
 		b.Event("agent.error", &aid, &item.ID, map[string]any{"error": err.Error()})
+		if strings.Contains(err.Error(), "not trusted") {
+			return nil, fmt.Errorf("Claude hasn't been allowed to work in %s yet. Allow it once with `crew slot trust %s` "+
+				"(accept the prompt, then type /exit), then run `crew agent start %d` again", dir, slot.Name, item.ID)
+		}
 		return nil, err
 	}
 	bg := bgID(a.SessionID)

@@ -28,7 +28,7 @@ usage: crew <command> [args] [--json]
   status
   ticket add [--jira KEY] [--text TEXT|-] [free text...] | show ID|KEY | ls
   item   new --ticket ID [--title T] [--repo R] [--branch B] | ls [--stage S] | show ID | move ID STAGE [--force]
-  slot   add NAME PATH [--port-offset N] | ls | lease NAME --agent ID | release NAME
+  slot   add NAME PATH [--clone URL] [--port-offset N] | ls | trust NAME | lease NAME --agent ID | release NAME
   agent  start ITEM [--slot S] [--role R] [--model M] [--name N] [--prompt P]
          ls | show ID|NAME | show --session SID | show --branch B [--repo R]
          stop ID | attach-mark ID on|off

@@ -461,3 +461,21 @@ func TestBgID(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestAgentStartUntrustedFolder(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	os.WriteFile(f.Path, []byte("#!/bin/sh\necho 'Workspace not trusted. Run `claude` in this folder once.' >&2\nexit 1\n"), 0o755)
+	_, err := b.StartAgent(StartOpts{ItemID: it.ID, Slot: "s2"})
+	if err == nil || !strings.Contains(err.Error(), "crew slot trust s2") {
+		t.Fatalf("err = %v", err)
+	}
+	if as, _ := b.Agents(); len(as) != 0 {
+		t.Fatalf("failed start left agents: %+v", as)
+	}
+	if s, _ := b.Slot("s2"); s.Agent != "" {
+		t.Fatalf("slot still leased: %+v", s)
+	}
+	if it, _ = b.Item(it.ID); it.AgentID != nil || it.Stage != "queued" {
+		t.Fatalf("item: %+v", it)
+	}
+}

@@ -92,13 +92,23 @@ Expected output:
 
 ```
 slot slot-one /Users/you/agents/slot-one/my-service (port offset 0)
+next: allow Claude to work there once with `crew slot trust slot-one`
 ```
+
+**Allow Claude to work in the slot (once per slot).** Claude Code only starts background sessions in folders you've trusted. This opens Claude in the slot so you can accept its prompt:
+
+```sh
+crew slot trust "$SLOT"
+```
+
+When Claude asks whether to trust the folder, accept, then type `/exit`. crew never accepts this for you.
 
 Make a second slot so two agents can run side by side:
 
 ```sh
 SLOT=slot-two                                     # ← change if you like
 crew slot add "$SLOT" ~/agents/$SLOT/$REPO --clone "$REPO_URL"
+crew slot trust "$SLOT"
 crew slot ls
 ```
 
@@ -392,6 +402,7 @@ crew event ls | tail -20
 | You see | What to do |
 |---|---|
 | `… doesn't exist: clone a repo there first …` | The slot folder isn't there. Use `crew slot add … --clone <url>`, or clone it yourself first. |
+| `Claude hasn't been allowed to work in … yet` | Run `crew slot trust <slot>`, accept the prompt, type `/exit`, then start the agent again. Nothing was left behind by the failed start. |
 | `branch agent/X is locked by slot Y` | Another agent has that branch. Stop it (`crew agent stop …`) or use another branch. |
 | `no free slot` | All slots are busy. Stop an agent, or add a slot (step 3). |
 | An agent stays `starting` | It hasn't finished its first turn yet, or the hooks aren't registered. Check with `jq '.hooks | keys' ~/.claude/settings.json`, and run `~/dotfiles/install.sh hooks` if `Stop` is missing. |
@@ -421,7 +432,7 @@ crew init
 
 ```sh
 # setup
-crew slot add NAME ~/agents/NAME/REPO --clone URL
+crew slot add NAME ~/agents/NAME/REPO --clone URL  &&  crew slot trust NAME
 crew ticket add "read jira ticket PROJ-123 …"   |   crew ticket add --text -
 crew item new --ticket N [--branch agent/x]  &&  crew item move N queued
 
