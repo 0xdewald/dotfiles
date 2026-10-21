@@ -76,27 +76,43 @@ end
 -- Claude keeps each conversation in ~/.claude/projects/<cwd, non-alphanumerics as "-">/<id>.jsonl
 local function project_dir(cwd) return vim.fn.expand("~/.claude/projects/") .. cwd:gsub("[^%w]", "-") end
 
-local function claude_cwd() return vim.g.claude_cwd or vim.fn.getcwd() end
+-- Folder of the running Claude; before one is started, the folder it will start in
+local function claude_cwd() return claude_buf() and vim.g.claude_cwd or vim.fn.getcwd() end
 
 local function session_exists(id) return vim.uv.fs_stat(project_dir(claude_cwd()) .. "/" .. id .. ".jsonl") ~= nil end
 
--- Point the SessionStart hook at this folder's id file (read by claudecode when it starts Claude)
-local function prepare()
-  vim.fn.mkdir(state_dir, "p")
-  require("claudecode").state.config.env.NVIM_CLAUDE_SESSION_FILE = id_file()
+-- Environment for the next Claude start (read by claudecode when it starts Claude): point the
+-- SessionStart hook at this folder's id file, unless opts.track is false (e.g. a crew agent's
+-- session, which mustn't replace the folder's own). opts.env adds variables for this start only.
+local extra_env = {}
+local function prepare(opts)
+  opts = opts or {}
+  local env = require("claudecode").state.config.env
+  for k in pairs(extra_env) do env[k] = nil end
+  extra_env = opts.env or {}
+  for k, v in pairs(extra_env) do env[k] = v end
+  if opts.track == false then
+    env.NVIM_CLAUDE_SESSION_FILE = nil
+  else
+    vim.fn.mkdir(state_dir, "p")
+    env.NVIM_CLAUDE_SESSION_FILE = id_file()
+  end
+  vim.g.claude_agent = opts.agent -- set for crew agents (lua/crew.lua), nil otherwise
 end
 
--- Open Claude on a session: resume it when it exists, otherwise start a new one with that ID
-function M.start(id)
-  prepare()
+-- Open Claude on a session: resume it when it exists, otherwise start a new one with that ID.
+-- opts (all optional): track = false to leave the folder's saved session alone, env, agent, name.
+function M.start(id, opts)
+  opts = opts or {}
+  prepare(opts)
   local args
   if id and session_exists(id) then
     args = "--resume " .. id
   else
-    id = vim.trim(vim.fn.system("uuidgen")):lower()
-    args = ("--session-id %s -n %s"):format(id, vim.fn.shellescape(name()))
+    id = id or vim.trim(vim.fn.system("uuidgen")):lower()
+    args = ("--session-id %s -n %s"):format(id, vim.fn.shellescape(opts.name or name()))
   end
-  vim.fn.writefile({ id }, id_file())
+  if opts.track ~= false then vim.fn.writefile({ id }, id_file()) end
   require("claudecode.terminal").open({}, args)
 end
 

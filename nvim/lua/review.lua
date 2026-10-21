@@ -479,6 +479,24 @@ function M.diff_turn()
   vim.cmd("DiffviewOpen " .. rev .. " -C" .. vim.fn.fnameescape(repo.root))
 end
 
+-- Space rN: review a range of commits. A number n means the last n commits (HEAD~n..HEAD);
+-- anything else is a commit or branch to compare HEAD against (e.g. develop, a1b2c3d)
+function M.diff_range()
+  local repo = candidates()[1]
+  if not repo then return vim.notify("Review: not in a git repo", vim.log.levels.WARN) end
+  vim.ui.input({ prompt = "Review the last N commits, or since commit/branch: ", default = "1" }, function(input)
+    input = input and vim.trim(input)
+    if not input or input == "" then return end
+    local base = input:match("^%d+$") and ("HEAD~" .. input) or input
+    local rev = git(repo.root, { "rev-parse", "--verify", "--quiet", base .. "^{commit}" })
+    if not rev then return vim.notify("Review: no commit " .. base .. " in " .. repo.root, vim.log.levels.WARN) end
+    local n = git(repo.root, { "rev-list", "--count", base .. "..HEAD" }) or "?"
+    vim.notify(("Review: %s commit%s in %s (%s..HEAD)"):format(n, n == "1" and "" or "s",
+      vim.fn.fnamemodify(repo.root, ":~"), base))
+    vim.cmd("DiffviewOpen " .. vim.fn.fnameescape(base) .. "..HEAD -C" .. vim.fn.fnameescape(repo.root))
+  end)
+end
+
 function M.diff_all()
   local repo = candidates()[1]
   if repo then vim.notify("Review: all changes in " .. vim.fn.fnamemodify(repo.root, ":~")) end
@@ -506,6 +524,7 @@ function M.setup()
   map("n", "<leader>rt", M.toggle, { desc = "Toggle comment display" })
   map("n", "<leader>rv", M.diff_turn, { desc = "Diff last agent turn" })
   map("n", "<leader>rV", M.diff_all, { desc = "Diff all changes (vs HEAD)" })
+  map("n", "<leader>rN", M.diff_range, { desc = "Diff a range of commits" })
   map("n", "<leader>rq", "<cmd>DiffviewClose<cr>", { desc = "Close diff view" })
 end
 
