@@ -76,7 +76,9 @@ vim.keymap.set("t", "<C-l>", "<C-\\><C-n><C-w>l")
 vim.keymap.set({ "n", "i" }, "<C-s>", "<cmd>w<CR><Esc>", { desc = "Save" })
 -- Quit everything, back to the shell. Asks about unsaved files; Claude and terminals just stop
 -- (the workspace layout and Claude's conversation are saved and come back next time)
-vim.keymap.set("n", "<leader>qq", "<cmd>confirm qa<CR>", { desc = "Quit Neovim" })
+vim.keymap.set("n", "<leader>qq", function()
+  if require("review").confirm_quit() then vim.cmd("confirm qa") end
+end, { desc = "Quit Neovim" })
 
 vim.api.nvim_create_autocmd("TextYankPost", {
   callback = function() vim.hl.on_yank() end,

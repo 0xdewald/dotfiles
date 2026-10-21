@@ -152,6 +152,8 @@ var migrations = []string{
 		item_id INTEGER,
 		data_json TEXT NOT NULL DEFAULT '{}'
 	);`,
+	// which side of a diff a comment was made on: new (the change) or old (before it)
+	`ALTER TABLE comments ADD COLUMN side TEXT NOT NULL DEFAULT 'new';`,
 }
 
 func (b *Board) migrate() error {

@@ -789,3 +789,29 @@ func TestNeedsInputAndIdleReminder(t *testing.T) {
 		t.Fatalf("resume args %q", last)
 	}
 }
+
+// Comments made on a commit, or on the old side of a diff, say so in the message to the agent
+func TestCommentOnCommitAndOldSide(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	hook(t, b, "Stop", a.SessionID, writeTranscript(t, "done"))
+	added, err := b.AddComments([]Comment{
+		{Branch: a.Branch, File: "a.go", StartLine: 3, EndLine: 3, Excerpt: []string{"x := 1"}, Text: "rename", Commit: "a1b2c3d4e5f60718", Side: "new"},
+		{Branch: a.Branch, File: "b.go", StartLine: 7, EndLine: 7, Excerpt: []string{"old()"}, Text: "why was this removed?", Commit: "a1b2c3d4e5f60718", Side: "old"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.SendComments(added, "you"); err != nil {
+		t.Fatal(err)
+	}
+	args := f.Calls(t)[len(f.Calls(t))-1].Args
+	msg := args[len(args)-1]
+	if !strings.Contains(msg, "`a.go:3` (in commit a1b2c3d4e5)") || !strings.Contains(msg, "`b.go:7` (before the change, in commit a1b2c3d4e5)") {
+		t.Fatalf("message:\n%s", msg)
+	}
+	cs, _ := b.Comments(CommentFilter{Branch: a.Branch})
+	if len(cs) != 2 || cs[1].Side != "old" || cs[0].Commit == "" {
+		t.Fatalf("stored: %+v", cs)
+	}
+}

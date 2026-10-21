@@ -1,19 +1,19 @@
--- Review agent changes: leave line comments, then send them to the Claude terminal (claudecode.nvim).
+-- Line comments on code: a comment is a request to change that code, sent to whoever owns it.
 --
--- Comments are grouped into reviews. Each repo has at most one active review: new comments go
--- into it and only its comments are shown and sent. Closing a review keeps it in the history
--- (Space rR brings it back); deleting it drops it with its comments.
+-- Comment on any line (Space rc): a file, or either side of any diff (last agent turn, uncommitted
+-- changes, a range of commits). Comments collect per repo until you send them (Space rs): on a crew
+-- agent's branch they go to the board, which hands them to that agent (lua/crew.lua); otherwise to
+-- the Claude side panel. Closing a diff or quitting with unsent comments reminds you.
 --
--- Stored in <git dir>/review-comments.json of the file's own repo, so each tab of a multi-repo
--- workspace has its own reviews. Shown as virtual lines above the commented code, which also
--- appear in diffview's right-hand (working tree) buffers since those are the real files.
+-- Stored in <git dir>/review-comments.json of the code's own repo. Shown as virtual lines above the
+-- commented code, in files and in diff buffers alike.
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("review")
-local repos = {} -- git dir -> { root, gitdir, reviews, active }
+local repos = {} -- git dir -> { root, gitdir, comments }
 local dir_repo = {} -- dir -> git dir (or false when not in a repo)
 local marks = {} -- buf -> { extmark id -> comment }
-M.max_inline = 5 -- more open comments than this go to .git/review.md instead of the prompt
+M.max_inline = 5 -- more comments than this go to .git/review.md instead of the prompt
 
 local function git(dir, args)
   local r = vim.system(vim.list_extend({ "git", "-C", dir }, args), { text = true }):wait()
@@ -21,18 +21,16 @@ local function git(dir, args)
 end
 
 local function load(gitdir, root)
-  local repo = { root = root, gitdir = gitdir, reviews = {} }
+  local repo = { root = root, gitdir = gitdir, comments = {} }
   local f = io.open(gitdir .. "/review-comments.json")
   if f then
     local ok, data = pcall(vim.json.decode, f:read("*a"))
     f:close()
     if ok and type(data) == "table" then
-      repo.reviews, repo.active = data.reviews or {}, data.active
-      -- Older files had one flat comment list: turn it into the active review
-      if data.comments and #data.comments > 0 then
-        table.insert(repo.reviews, { id = #repo.reviews + 1, created = os.time(), comments = data.comments })
-        repo.active = #repo.reviews
-      end
+      repo.comments = data.comments or {}
+      -- Older files grouped comments into reviews: merge them into one list, renumbered
+      for _, r in ipairs(data.reviews or {}) do vim.list_extend(repo.comments, r.comments or {}) end
+      for i, c in ipairs(repo.comments) do c.id = i end
     end
   end
   return repo
@@ -40,37 +38,8 @@ end
 
 local function save(repo)
   local f = assert(io.open(repo.gitdir .. "/review-comments.json", "w"))
-  f:write(vim.json.encode({ active = repo.active, reviews = repo.reviews }, { indent = "  " }))
+  f:write(vim.json.encode({ comments = repo.comments }, { indent = "  " }))
   f:close()
-end
-
-local function find_review(repo, id)
-  for i, r in ipairs(repo.reviews) do
-    if r.id == id then return r, i end
-  end
-end
-
-local function active(repo) return repo.active and find_review(repo, repo.active) or nil end
-
--- Active review's comments ({} when there is none)
-local function comments(repo)
-  local r = active(repo)
-  return r and r.comments or {}
-end
-
-local function new_review(repo)
-  local id = 0
-  for _, r in ipairs(repo.reviews) do id = math.max(id, r.id) end
-  local r = { id = id + 1, created = os.time(), comments = {} }
-  table.insert(repo.reviews, r)
-  repo.active = r.id
-  return r
-end
-
-local function counts(r)
-  local n = { open = 0, sent = 0, resolved = 0 }
-  for _, c in ipairs(r.comments) do n[c.status] = n[c.status] + 1 end
-  return n
 end
 
 -- Repo for a directory (cached; git is only asked once per dir)
@@ -84,21 +53,42 @@ local function repo_at(dir)
   return dir_repo[dir] and repos[dir_repo[dir]] or nil
 end
 
--- Real file behind a buffer (nil for terminals, diffview:// sides, scratch buffers)
-local function buf_file(buf)
-  local name = vim.api.nvim_buf_get_name(buf)
-  if vim.bo[buf].buftype ~= "" or name == "" or name:match("^%a+://") then return nil end
-  return vim.uv.fs_realpath(name) or name
+-- A diffview buffer (diffview://…): the repo dir, repo-relative path, commit (nil for the working
+-- tree) and side ("old" for the left, pre-change side) of the file it shows
+local function diffview_file(buf)
+  local ok, lib = pcall(require, "diffview.lib")
+  if not ok then return end
+  local RevType = require("diffview.vcs.rev").RevType
+  for _, view in ipairs(lib.views or {}) do
+    local layout = view.cur_entry and view.cur_entry.layout
+    for _, f in ipairs(layout and layout:files() or {}) do
+      if f.bufnr == buf then
+        local commit = f.rev and f.rev.type == RevType.COMMIT and f.rev.commit or nil
+        local side = (layout.a and layout.a.file == f) and "old" or "new"
+        return f.adapter.ctx.toplevel, f.path, commit, side
+      end
+    end
+  end
 end
 
-local function buf_repo(buf)
-  local file = buf_file(buf)
-  local repo = repo_at(file and vim.fs.dirname(file) or vim.fn.getcwd())
-  return repo, repo and file and file:sub(#repo.root + 2)
+-- What a buffer shows: repo, repo-relative path, commit (nil = working tree), side ("new"/"old")
+local function buf_code(buf)
+  local name = vim.api.nvim_buf_get_name(buf)
+  if name:match("^diffview://") then
+    local top, path, commit, side = diffview_file(buf)
+    local repo = top and repo_at(top)
+    return repo, repo and path, commit, side
+  end
+  if vim.bo[buf].buftype ~= "" or name == "" or name:match("^%a+://") then
+    return repo_at(vim.fn.getcwd())
+  end
+  local file = vim.uv.fs_realpath(name) or name
+  local repo = repo_at(vim.fs.dirname(file))
+  return repo, repo and file:sub(#repo.root + 2), nil, "new"
 end
 
 -- Current repo: the buffer's, else the tab's cwd
-function M.repo() return buf_repo(0) end
+function M.repo() return (buf_code(0)) end
 
 local function file_lines(repo, c)
   local buf = vim.fn.bufnr(repo.root .. "/" .. c.file)
@@ -127,12 +117,19 @@ function M.anchor(lines, c)
   return math.max(1, math.min(c.start_line, #lines))
 end
 
-local function reanchor(repo, c, lines)
+local function reanchor(c, lines)
   local s = M.anchor(lines, c)
   if s ~= c.start_line then
     c.end_line, c.start_line = s + c.end_line - c.start_line, s
     return true
   end
+end
+
+local function where(c)
+  local parts = {}
+  if c.side == "old" then table.insert(parts, "before the change") end
+  if c.commit then table.insert(parts, "in " .. c.commit:sub(1, 10)) end
+  return #parts > 0 and (" (" .. table.concat(parts, ", ") .. ")") or ""
 end
 
 function M.render(buf)
@@ -141,20 +138,28 @@ function M.render(buf)
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   marks[buf] = {}
   if M.hidden then return end
-  local repo, rel = buf_repo(buf)
+  local repo, rel, commit, side = buf_code(buf)
   if not (repo and rel) then return end
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local moved = false
-  for _, c in ipairs(comments(repo)) do
-    if c.file == rel and c.status ~= "resolved" then
-      moved = reanchor(repo, c, lines) or moved
+  for _, c in ipairs(repo.comments) do
+    -- old-side comments show on old sides; the rest on new sides and in the file itself
+    if c.file == rel and c.status ~= "resolved" and (c.side == "old") == (side == "old") then
+      local s
+      if commit == nil and not c.commit and side ~= "old" then
+        moved = reanchor(c, lines) or moved -- working tree: keep the stored lines current
+        s = c.start_line
+      else
+        s = M.anchor(lines, c)
+      end
+      local e = s + c.end_line - c.start_line
       local hl = c.status == "sent" and "ReviewCommentSent" or "ReviewComment"
       local virt = {}
       for i, l in ipairs(vim.split(c.text, "\n")) do
         virt[i] = { { (i == 1 and (" 󰆉 #%d%s: "):format(c.id, c.status == "sent" and " (sent)" or "") or "   ") .. l .. " ", hl } }
       end
-      local id = vim.api.nvim_buf_set_extmark(buf, ns, c.start_line - 1, 0, {
-        end_row = math.min(c.end_line, #lines) - 1,
+      local id = vim.api.nvim_buf_set_extmark(buf, ns, s - 1, 0, {
+        end_row = math.min(e, #lines) - 1,
         sign_text = "▍",
         sign_hl_group = "ReviewSign",
         virt_lines = virt,
@@ -169,19 +174,18 @@ end
 
 local function render_repo(repo)
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(buf) and (repo == nil or buf_repo(buf) == repo) then M.render(buf) end
+    if vim.api.nvim_buf_is_loaded(buf) and (repo == nil or (buf_code(buf)) == repo) then M.render(buf) end
   end
 end
 
 function M.add(buf, s, e, text)
-  local repo, rel = buf_repo(buf)
-  if not (repo and rel) then return vim.notify("Review: not a file in a git repo", vim.log.levels.WARN) end
-  local r = active(repo) or new_review(repo)
+  local repo, rel, commit, side = buf_code(buf)
+  if not (repo and rel) then return vim.notify("Comment: this buffer isn't code in a git repo", vim.log.levels.WARN) end
   local id = 0
-  for _, c in ipairs(r.comments) do id = math.max(id, c.id) end
+  for _, c in ipairs(repo.comments) do id = math.max(id, c.id) end
   local c = { id = id + 1, file = rel, start_line = s, end_line = e, text = text, status = "open",
-    excerpt = vim.api.nvim_buf_get_lines(buf, s - 1, e, false) }
-  table.insert(r.comments, c)
+    commit = commit, side = side, excerpt = vim.api.nvim_buf_get_lines(buf, s - 1, e, false) }
+  table.insert(repo.comments, c)
   save(repo)
   render_repo(repo)
   return c
@@ -194,7 +198,7 @@ function M.comment()
     if s > e then s, e = e, s end
     vim.cmd("normal! \27")
   end
-  vim.ui.input({ prompt = ("Comment L%d%s: "):format(s, e > s and "-" .. e or "") }, function(text)
+  vim.ui.input({ prompt = ("Change request L%d%s: "):format(s, e > s and "-" .. e or "") }, function(text)
     if text and vim.trim(text) ~= "" then M.add(buf, s, e, text) end
   end)
 end
@@ -205,13 +209,13 @@ local function at_cursor()
     local c = marks[buf] and marks[buf][m[1]]
     if c then return c end
   end
-  vim.notify("Review: no comment on this line", vim.log.levels.WARN)
+  vim.notify("Comment: none on this line", vim.log.levels.WARN)
 end
 
 local function update(repo, c, status)
-  for i, x in ipairs(comments(repo)) do
+  for i, x in ipairs(repo.comments) do
     if x == c then
-      if status then x.status = status else table.remove(comments(repo), i) end
+      if status then x.status = status else table.remove(repo.comments, i) end
       break
     end
   end
@@ -222,22 +226,21 @@ end
 function M.delete() local c = at_cursor(); if c then update(M.repo(), c) end end
 function M.resolve() local c = at_cursor(); if c then update(M.repo(), c, "resolved") end end
 
+-- Space rl: this repo's open and sent comments
 function M.list()
   local repo = M.repo()
-  if not repo then return vim.notify("Review: not in a git repo", vim.log.levels.WARN) end
-  local r = active(repo)
-  if not r then return vim.notify("Review: no active review (Space rR to pick one)") end
+  if not repo then return vim.notify("Comment: not in a git repo", vim.log.levels.WARN) end
   local function act(status)
     return function(picker)
       for _, item in ipairs(picker:selected({ fallback = true })) do update(repo, item.comment, status) end
-      picker:find({ refresh = true })
+      picker:refresh()
     end
   end
   Snacks.picker.pick({
-    title = ("Review %d comments"):format(r.id),
+    title = "Comments · " .. vim.fn.fnamemodify(repo.root, ":t"),
     finder = function()
       local items = {}
-      for _, c in ipairs(r.comments) do
+      for _, c in ipairs(repo.comments) do
         if c.status ~= "resolved" then
           table.insert(items, { comment = c, file = repo.root .. "/" .. c.file, pos = { c.start_line, 0 },
             text = ("%s %s %s"):format(c.file, c.status, c.text) })
@@ -248,7 +251,7 @@ function M.list()
     format = function(item)
       local c = item.comment
       return { { ("#%-3d"):format(c.id), "Number" }, { c.status == "sent" and "󰗡 " or "󰆉 ", "ReviewSign" },
-        { ("%s:%d "):format(c.file, c.start_line), "SnacksPickerFile" }, { c.text } }
+        { ("%s:%d"):format(c.file, c.start_line), "SnacksPickerFile" }, { where(c) .. " ", "Comment" }, { c.text } }
     end,
     actions = {
       review_delete = act(nil),
@@ -261,7 +264,7 @@ function M.list()
       end,
     },
     win = { input = { keys = {
-      ["<c-s>"] = { "review_send", mode = { "n", "i" }, desc = "Send selected to Claude (again)" },
+      ["<c-s>"] = { "review_send", mode = { "n", "i" }, desc = "Send selected (again)" },
       ["<c-x>"] = { "review_delete", mode = { "n", "i" }, desc = "Delete comment" },
       ["<c-r>"] = { "review_resolve", mode = { "n", "i" }, desc = "Resolve comment" },
       ["<c-o>"] = { "review_reopen", mode = { "n", "i" }, desc = "Mark open again" },
@@ -270,172 +273,129 @@ function M.list()
 end
 
 -- Markdown prompt for a list of comments; paths are relative to `base`
-function M.format(repo, comments, base)
+function M.format(repo, list, base)
   local prefix = base == repo.root and "" or repo.root .. "/"
-  local out = { ("I reviewed your changes and left %d comment%s. Please address each one:"):format(#comments, #comments == 1 and "" or "s") }
-  for i, c in ipairs(comments) do
+  local out = { ("I reviewed your changes and left %d comment%s. Please address each one:"):format(#list, #list == 1 and "" or "s") }
+  for i, c in ipairs(list) do
     local ft = vim.filetype.match({ filename = c.file }) or ""
     local range = c.end_line > c.start_line and ("%d-%d"):format(c.start_line, c.end_line) or tostring(c.start_line)
-    vim.list_extend(out, { "", ("%d. `%s%s:%s`"):format(i, prefix, c.file, range), "```" .. ft })
+    vim.list_extend(out, { "", ("%d. `%s%s:%s`%s"):format(i, prefix, c.file, range, where(c)), "```" .. ft })
     vim.list_extend(out, c.excerpt)
     vim.list_extend(out, { "```", c.text })
   end
   return table.concat(out, "\n")
 end
 
--- Send the given comments (open or already sent) to Claude and mark them sent
+-- Send the given comments (open or already sent) to whoever owns the code, and mark them sent
 function M.send_comments(repo, list)
-  if #list == 0 then return vim.notify("Review: nothing to send") end
-  local open = {}
+  if #list == 0 then return vim.notify("Comment: nothing to send") end
   for _, c in ipairs(list) do
-    reanchor(repo, c, file_lines(repo, c))
-    table.insert(open, c)
+    if not c.commit and c.side ~= "old" then reanchor(c, file_lines(repo, c)) end
   end
   -- On a crew agent's branch, the board delivers them to that agent (lua/crew.lua)
   local has_crew, crew = pcall(require, "crew")
-  if has_crew and crew.route(repo, open) then
-    for _, c in ipairs(open) do c.status = "sent" end
+  if has_crew and crew.route(repo, list) then
+    for _, c in ipairs(list) do c.status = "sent" end
     save(repo)
     render_repo(repo)
-    return
+    return true
   end
   local ok, term = pcall(require, "claudecode.terminal")
   if not (ok and term.get_active_terminal_bufnr()) then
-    return vim.notify("Review: Claude isn't running (<leader>ac to start it)", vim.log.levels.WARN)
+    return vim.notify("Comment: Claude isn't running (Space ac to start it)", vim.log.levels.WARN)
   end
   local base = vim.g.claude_cwd and (vim.uv.fs_realpath(vim.g.claude_cwd) or vim.g.claude_cwd)
-  local msg = M.format(repo, open, base)
-  if #open > M.max_inline then
+  local msg = M.format(repo, list, base)
+  if #list > M.max_inline then
     local f = assert(io.open(repo.gitdir .. "/review.md", "w"))
     f:write(msg .. "\n")
     f:close()
     local md = repo.gitdir .. "/review.md"
     if base == repo.root and md:sub(1, #base + 1) == base .. "/" then md = md:sub(#base + 2) end
-    msg = ("I left %d review comments on your changes in @%s. Please address each one."):format(#open, md)
+    msg = ("I left %d review comments on your changes in @%s. Please address each one."):format(#list, md)
   end
   if not term.send_to_terminal(msg) then return end
-  for _, c in ipairs(open) do c.status = "sent" end
+  for _, c in ipairs(list) do c.status = "sent" end
   save(repo)
   render_repo(repo)
-  vim.notify(("Review: sent %d comment%s to Claude"):format(#open, #open == 1 and "" or "s"))
+  vim.notify(("Sent %d comment%s to Claude"):format(#list, #list == 1 and "" or "s"))
+  return true
 end
 
 local function unresolved(repo, status)
-  return vim.tbl_filter(function(c) return c.status ~= "resolved" and (not status or c.status == status) end, comments(repo))
+  return vim.tbl_filter(function(c) return c.status ~= "resolved" and (not status or c.status == status) end, repo.comments)
 end
 
--- Send open comments; when everything was already sent, offer to send those again
+-- Space rs: send the comments not sent yet; when everything was sent already, offer to resend
 function M.send()
   local repo = M.repo()
-  if not repo then return vim.notify("Review: not in a git repo", vim.log.levels.WARN) end
+  if not repo then return vim.notify("Comment: not in a git repo", vim.log.levels.WARN) end
   local open = unresolved(repo, "open")
   if #open > 0 then return M.send_comments(repo, open) end
   local sent = unresolved(repo, "sent")
-  if #sent == 0 then return vim.notify("Review: no comments to send") end
+  if #sent == 0 then return vim.notify("Comment: none to send") end
   if vim.fn.confirm(("All %d comments were already sent. Send them again?"):format(#sent), "&Yes\n&No", 2) == 1 then
     M.send_comments(repo, sent)
   end
 end
 
--- Send every unresolved comment of the active review, sent or not
+-- Space rS: send every unresolved comment, sent or not
 function M.send_all()
   local repo = M.repo()
   if repo then M.send_comments(repo, unresolved(repo)) end
 end
 
-local function label(r)
-  local n = counts(r)
-  return ("Review %d · %s · %d open, %d sent, %d resolved"):format(r.id, os.date("%b %d %H:%M", r.created), n.open, n.sent, n.resolved)
+-- Repos (loaded so far) with comments not sent yet: { { repo, count } }
+function M.unsent()
+  local out = {}
+  for _, repo in pairs(repos) do
+    local n = #unresolved(repo, "open")
+    if n > 0 then table.insert(out, { repo = repo, count = n }) end
+  end
+  return out
 end
 
--- Close the active review (kept in history); the next comment starts a new one
-function M.close()
-  local repo = M.repo()
-  local r = repo and active(repo)
-  if not r then return vim.notify("Review: no active review") end
-  repo.active = nil
-  save(repo)
-  render_repo(repo)
-  vim.notify(("Review %d closed. Space rR brings it back."):format(r.id))
+-- Who comments in a repo go to: the crew agent on its branch, else your Claude
+local function owner(repo)
+  local has_crew, crew = pcall(require, "crew")
+  local branch = git(repo.root, { "branch", "--show-current" })
+  local a = has_crew and crew.available() and branch and branch ~= ""
+    and crew.run({ "agent", "show", "--branch", branch, "--repo", vim.fn.fnamemodify(repo.root, ":t") })
+  return a and a.name or "your Claude"
 end
 
-function M.delete_review(repo, r)
-  if vim.fn.confirm(("Delete %s?"):format(label(r)), "&Yes\n&No", 2) ~= 1 then return false end
-  local _, i = find_review(repo, r.id)
-  table.remove(repo.reviews, i)
-  if repo.active == r.id then repo.active = nil end
-  save(repo)
-  render_repo(repo)
+local function unsent_text(list)
+  return table.concat(vim.tbl_map(function(u)
+    return ("%d comment%s for %s"):format(u.count, u.count == 1 and "" or "s", owner(u.repo))
+  end, list), ", ")
+end
+
+-- Reminder when a diff closes with comments not sent
+function M.remind()
+  local list = M.unsent()
+  if #list > 0 then
+    vim.notify(unsent_text(list) .. " not sent yet: Space rs", vim.log.levels.WARN)
+  end
+end
+
+-- Before quitting (Space qq): ask about unsent comments. Returns false to cancel the quit.
+function M.confirm_quit()
+  local list = M.unsent()
+  if #list == 0 then return true end
+  local choice = vim.fn.confirm(unsent_text(list) .. " not sent yet.", "&Send\n&Quit anyway\n&Cancel", 1)
+  if choice == 3 or choice == 0 then return false end
+  if choice == 1 then
+    for _, u in ipairs(list) do M.send_comments(u.repo, unresolved(u.repo, "open")) end
+  end
   return true
-end
-
--- Delete the active review and all its comments
-function M.clear()
-  local repo = M.repo()
-  local r = repo and active(repo)
-  if not r then return vim.notify("Review: no active review") end
-  M.delete_review(repo, r)
-end
-
--- All reviews of this repo: Enter makes one active again, Ctrl-x deletes it, Ctrl-n starts a new one
-function M.reviews()
-  local repo = M.repo()
-  if not repo then return vim.notify("Review: not in a git repo", vim.log.levels.WARN) end
-  Snacks.picker.pick({
-    title = "Reviews",
-    finder = function()
-      local items = {}
-      for i = #repo.reviews, 1, -1 do
-        local r = repo.reviews[i]
-        table.insert(items, { review = r, text = label(r) })
-      end
-      return items
-    end,
-    format = function(item)
-      local r = item.review
-      return { { r.id == repo.active and "● " or "  ", "ReviewSign" }, { label(r) } }
-    end,
-    preview = function(ctx)
-      local lines = {}
-      for _, c in ipairs(ctx.item.review.comments) do
-        table.insert(lines, ("#%d [%s] %s:%d  %s"):format(c.id, c.status, c.file, c.start_line, c.text))
-      end
-      ctx.preview:set_lines(#lines > 0 and lines or { "(no comments)" })
-    end,
-    confirm = function(picker, item)
-      picker:close()
-      if not item then return end
-      repo.active = item.review.id
-      save(repo)
-      render_repo(repo)
-      vim.notify(("Review %d is active again (%d comments)"):format(item.review.id, #item.review.comments))
-    end,
-    actions = {
-      review_delete = function(picker, item)
-        if item and M.delete_review(repo, item.review) then picker:find({ refresh = true }) end
-      end,
-      review_new = function(picker)
-        picker:close()
-        new_review(repo)
-        save(repo)
-        render_repo(repo)
-        vim.notify("Review: started a new review")
-      end,
-    },
-    win = { input = { keys = {
-      ["<c-x>"] = { "review_delete", mode = { "n", "i" }, desc = "Delete review and its comments" },
-      ["<c-n>"] = { "review_new", mode = { "n", "i" }, desc = "New review" },
-    } } },
-  })
 end
 
 function M.toggle()
   M.hidden = not M.hidden
   render_repo(nil)
-  vim.notify("Review comments " .. (M.hidden and "hidden" or "shown"))
+  vim.notify("Comments " .. (M.hidden and "hidden" or "shown"))
 end
 
--- Diff the working tree against the snapshot bin/claude-baseline took when the last prompt was sent
 -- Repos the current context could mean: where Claude runs, the tab's folder, the open file's repo.
 -- They differ when e.g. a tab was switched to another folder with a file of the old one still open.
 local function candidates()
@@ -459,6 +419,7 @@ local function turn_repo()
   return best
 end
 
+-- Diff the working tree against the snapshot bin/claude-baseline took when the last prompt was sent
 function M.diff_turn()
   local repo = turn_repo()
   if not repo then
@@ -515,21 +476,20 @@ function M.setup()
   vim.api.nvim_set_hl(0, "ReviewComment", { link = "DiagnosticVirtualTextInfo", default = true })
   vim.api.nvim_set_hl(0, "ReviewCommentSent", { link = "DiagnosticVirtualTextHint", default = true })
   vim.api.nvim_set_hl(0, "ReviewSign", { link = "DiagnosticSignInfo", default = true })
-  vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost", "FileChangedShellPost", "BufEnter" }, {
-    group = vim.api.nvim_create_augroup("review", { clear = true }),
+  local group = vim.api.nvim_create_augroup("review", { clear = true })
+  vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost", "FileChangedShellPost", "BufEnter", "BufWinEnter" }, {
+    group = group,
     callback = function(ev) M.render(ev.buf) end,
   })
+  vim.api.nvim_create_autocmd("User", { group = group, pattern = "DiffviewViewClosed", callback = M.remind })
   local map = vim.keymap.set
-  map({ "n", "x" }, "<leader>rc", M.comment, { desc = "Comment line/selection" })
+  map({ "n", "x" }, "<leader>rc", M.comment, { desc = "Comment (change request)" })
   map("n", "<leader>rl", M.list, { desc = "List comments" })
   map("n", "<leader>rd", M.delete, { desc = "Delete comment" })
   map("n", "<leader>rr", M.resolve, { desc = "Resolve comment" })
-  map("n", "<leader>rs", M.send, { desc = "Send comments to Claude" })
+  map("n", "<leader>rs", M.send, { desc = "Send comments" })
   map("n", "<leader>rS", M.send_all, { desc = "Send all unresolved (again)" })
-  map("n", "<leader>rR", M.reviews, { desc = "Reviews (reopen / delete)" })
-  map("n", "<leader>rn", M.close, { desc = "Close review, start fresh" })
-  map("n", "<leader>rX", M.clear, { desc = "Delete review + comments" })
-  map("n", "<leader>rt", M.toggle, { desc = "Toggle comment display" })
+  map("n", "<leader>rt", M.toggle, { desc = "Hide/show comments" })
   map("n", "<leader>rv", M.diff_turn, { desc = "Diff last agent turn" })
   map("n", "<leader>rV", M.diff_all, { desc = "Diff all changes (vs HEAD)" })
   map("n", "<leader>rN", M.diff_range, { desc = "Diff a range of commits" })

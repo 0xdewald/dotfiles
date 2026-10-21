@@ -18,7 +18,8 @@ type Comment struct {
 	ParentID   *int64   `json:"parent_id"`
 	Repo       string   `json:"repo"`
 	Branch     string   `json:"branch"`
-	Commit     string   `json:"commit"`
+	Commit     string   `json:"commit"` // "" when made on the working tree
+	Side       string   `json:"side"`   // "new" (the change) or "old" (before it)
 	File       string   `json:"file"`
 	StartLine  int      `json:"start_line"`
 	EndLine    int      `json:"end_line"`
@@ -29,13 +30,13 @@ type Comment struct {
 	Created    string   `json:"created"`
 }
 
-const commentSel = `SELECT id, item_id, document_id, parent_id, repo, branch, "commit", file, start_line, end_line,
+const commentSel = `SELECT id, item_id, document_id, parent_id, repo, branch, "commit", side, file, start_line, end_line,
 	excerpt_json, text, author, status, created FROM comments`
 
 func scanComment(s interface{ Scan(...any) error }) (*Comment, error) {
 	var c Comment
 	var ex string
-	if err := s.Scan(&c.ID, &c.ItemID, &c.DocumentID, &c.ParentID, &c.Repo, &c.Branch, &c.Commit, &c.File,
+	if err := s.Scan(&c.ID, &c.ItemID, &c.DocumentID, &c.ParentID, &c.Repo, &c.Branch, &c.Commit, &c.Side, &c.File,
 		&c.StartLine, &c.EndLine, &ex, &c.Text, &c.Author, &c.Status, &c.Created); err != nil {
 		return nil, err
 	}
@@ -85,9 +86,12 @@ func (b *Board) AddComments(cs []Comment) ([]*Comment, error) {
 			c.Excerpt = []string{}
 		}
 		ex, _ := json.Marshal(c.Excerpt)
-		res, err := tx.Exec(`INSERT INTO comments(item_id, document_id, parent_id, repo, branch, "commit", file, start_line, end_line,
-			excerpt_json, text, author, status, created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			c.ItemID, c.DocumentID, c.ParentID, c.Repo, c.Branch, c.Commit, c.File, c.StartLine, c.EndLine,
+		if c.Side != "old" {
+			c.Side = "new"
+		}
+		res, err := tx.Exec(`INSERT INTO comments(item_id, document_id, parent_id, repo, branch, "commit", side, file, start_line, end_line,
+			excerpt_json, text, author, status, created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			c.ItemID, c.DocumentID, c.ParentID, c.Repo, c.Branch, c.Commit, c.Side, c.File, c.StartLine, c.EndLine,
 			string(ex), c.Text, c.Author, c.Status, b.now())
 		if err != nil {
 			return nil, err
@@ -210,7 +214,7 @@ func (b *Board) SendComments(cs []*Comment, from string) (*Message, error) {
 		if c.EndLine > c.StartLine {
 			rng = fmt.Sprintf("%d-%d", c.StartLine, c.EndLine)
 		}
-		fmt.Fprintf(&sb, "\n\n%d. `%s:%s`\n```%s\n", i+1, c.File, rng, fence(c.File))
+		fmt.Fprintf(&sb, "\n\n%d. `%s:%s`%s\n```%s\n", i+1, c.File, rng, where(c), fence(c.File))
 		for _, l := range c.Excerpt {
 			sb.WriteString(l + "\n")
 		}
@@ -227,6 +231,25 @@ func (b *Board) SendComments(cs []*Comment, from string) (*Message, error) {
 		b.DB.Exec(`UPDATE comments SET status = 'sent' WHERE id = ? AND status = 'open'`, c.ID)
 	}
 	return m, nil
+}
+
+// where says which version of the code a comment is about, when it isn't the working tree
+func where(c *Comment) string {
+	var parts []string
+	if c.Side == "old" {
+		parts = append(parts, "before the change")
+	}
+	if c.Commit != "" {
+		short := c.Commit
+		if len(short) > 10 {
+			short = short[:10]
+		}
+		parts = append(parts, "in commit "+short)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
 }
 
 func plural(n int) string {

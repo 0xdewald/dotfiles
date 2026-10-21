@@ -334,10 +334,10 @@ function M.route(repo, comments)
   if branch == "" then return false end
   local a = M.run({ "agent", "show", "--branch", branch, "--repo", vim.fn.fnamemodify(repo.root, ":t") })
   if not a then return false end
-  local commit = vim.trim(vim.fn.system({ "git", "-C", repo.root, "rev-parse", "HEAD" }))
   local payload = vim.tbl_map(function(c)
-    return { repo = vim.fn.fnamemodify(repo.root, ":t"), branch = branch, commit = commit, file = c.file,
-      start_line = c.start_line, end_line = c.end_line, excerpt = c.excerpt, text = c.text, author = "you" }
+    -- commit/side say which version the comment is about ("" = the working tree)
+    return { repo = vim.fn.fnamemodify(repo.root, ":t"), branch = branch, commit = c.commit or "", side = c.side or "new",
+      file = c.file, start_line = c.start_line, end_line = c.end_line, excerpt = c.excerpt, text = c.text, author = "you" }
   end, comments)
   local res, err = M.run({ "comment", "add", "--stdin-json", "--send" }, vim.json.encode(payload))
   if not res then

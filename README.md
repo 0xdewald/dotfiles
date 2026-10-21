@@ -148,8 +148,8 @@ Run Claude Code inside Neovim, review what it changed, leave line comments, and 
 
 1. Claude runs in a right-hand split (see above; `Space ac` shows or hides it). claudecode.nvim runs the same WebSocket IDE server VS Code uses, so Claude sees your selection, can open files, and proposes edits as diffs (`Space aa` / `Space ad` accept / deny). `Space as` sends a visual selection, `Space ab` adds the current file.
 2. When it's done, `Space rv` diffs **the last agent turn** (working tree vs the snapshot taken when you sent the prompt) and `Space rV` diffs **all changes** vs HEAD. `Space rq` closes the diff.
-3. On any line (or visual range), `Space rc` adds a comment. It shows as a virtual line above the code, also in diffview's right-hand side. `Space rd` deletes and `Space rr` resolves the comment under the cursor; `Space rl` lists them (Enter jumps, `Ctrl-x` deletes, `Ctrl-r` resolves). Comments belong to a review: `Space rn` closes the current one (kept in history), `Space rR` lists reviews to bring one back or delete it, `Space rX` deletes the current one, `Space rt` hides/shows comments.
-4. `Space rs` sends all open comments to Claude as one numbered prompt (`path:lines`, the code, your comment). With more than 5 it writes them to `.git/review.md` and sends a short message pointing at that file. Sent comments are dimmed and marked `(sent)`; if everything was already sent, `Space rs` offers to send it again, and `Space rS` always sends every unresolved comment.
+3. On any line (or visual range), in a file or on either side of any diff (including commit ranges), `Space rc` adds a comment: a request to change that code. It shows as a virtual line above the code, in the diff and in the file. `Space rd` deletes and `Space rr` resolves the comment under the cursor; `Space rl` lists them (Enter jumps, `Ctrl-x` deletes, `Ctrl-r` resolves); `Space rt` hides/shows them. Comments made on a commit or on the old side record that.
+4. `Space rs` sends all open comments to whoever owns the code (the crew agent on that branch, else your Claude) as one numbered prompt (`path:lines`, the code, your comment). With more than 5 it writes them to `.git/review.md` and sends a short message pointing at that file. Sent comments are dimmed and marked `(sent)`; if everything was already sent, `Space rs` offers to send it again, and `Space rS` always sends every unresolved comment.
 
 Comments are stored per repo in `.git/review-comments.json`, so they survive restarts and each workspace tab has its own. If the code moves, a comment re-attaches to its original lines by searching for them nearby; if they're gone it stays on the original line number.
 
@@ -207,7 +207,7 @@ Leader is **Space**. Press it and wait to see everything in which-key.
 | `Space rc` / `rl` / `rd` / `rr` / `rs` | Review: comment (line or selection) / list / delete / resolve / send to Claude |
 | `Space rN` | Review: diff a range of commits (last n, or since a commit/branch) |
 | `Space mm` / `mb` / `ms` | Crew: dashboard of agents / send the open agent to the background / board status |
-| `Space rS` / `rn` / `rR` / `rX` / `rt` | Review: send all unresolved again / close review / list reviews / delete review / hide-show comments |
+| `Space rS` / `rt` | Comments: send all unresolved again / hide-show. Closing a diff or quitting with unsent comments reminds you. |
 | `Space rv` / `rV` / `rq` | Review: diff last agent turn / diff all vs HEAD / close diff |
 
 ## Rebuild with an AI instead

@@ -71,35 +71,29 @@ Other useful keys: select code in visual mode and press `Space a s` to send it t
 
 When Claude finishes a turn, press **`Space r v`**. This opens a side-by-side diff of only what Claude changed in its last turn, including new files. `Space r V` shows everything since your last commit instead, and `Space r q` closes the diff.
 
-Comments:
+**Comments are change requests.** Put the cursor on a line, in a file or on either side of any diff (`Space r v`, `Space r V` or a range of commits with `Space r N`), and press `Space r c`. What you write is a request to change that code. Comments collect until you send them.
 
 | Keys | Action |
 |---|---|
-| `Space r c` | Comment on the current line. In visual mode (`V`), comments on the selected lines. |
-| `Space r l` | List this review's comments. Enter jumps to one. `Tab` selects several, then `Ctrl-s` sends them (again), `Ctrl-r` resolves, `Ctrl-o` marks them open again, `Ctrl-x` deletes. |
+| `Space r c` | Comment on the current line. In visual mode (`V`), on the selected lines. Works on the old (left) side of a diff too. |
+| `Space r l` | List this repo's comments. Enter jumps to one. `Tab` selects several, then `Ctrl-s` sends them (again), `Ctrl-r` resolves, `Ctrl-o` marks them open again, `Ctrl-x` deletes. |
 | `Space r d` / `Space r r` | Delete / resolve the comment under the cursor |
 | `Space r t` | Hide or show all comments |
 
-Comments show up next to the code. They're saved in the repo's `.git` folder, so they survive restarts and are never committed.
-
-**Reviews.** Comments are grouped into a review. Your first comment starts one, and every comment after that joins it, until you close it. Only the current review's comments are shown and sent.
-
-| Keys | Action |
-|---|---|
-| `Space r n` | Close this review. Its comments disappear but are kept, and your next comment starts a new review. Use this when a round is done. |
-| `Space r R` | All reviews, newest first, with how many comments are open, sent and resolved. Enter brings one back (its comments reappear and can be sent again), `Ctrl-x` deletes one with its comments, `Ctrl-n` starts a new one. |
-| `Space r X` | Delete this review and all its comments (asks first) |
+Comments show up next to the code, in the diff and in the file itself. They're saved in the repo's `.git` folder, so they survive restarts and are never committed.
 
 ## 6. Send comments back to Claude
 
-Press **`Space r s`**. Claude receives one numbered message with each comment's file, lines, the code, and what you wrote. With more than 5 comments, they're written to `.git/review.md` and Claude is asked to read that file.
+Press **`Space r s`**. Whoever owns the code gets one numbered message with each comment's file, lines, the code, and what you wrote: the crew agent working on that branch, or otherwise your Claude in the side panel. A comment made on a commit or on the old side of a diff says so ("in commit a1b2c3d", "before the change"). With more than 5 comments to your own Claude, they're written to `.git/review.md` and Claude is asked to read that file.
 
-Sent comments stay on screen, dimmed and marked "(sent)", until you resolve them or close the review. That's on purpose: you check each one against Claude's fix.
+If you close a diff, or quit with `Space q q`, while comments haven't been sent, you're reminded. On quit you can send them, quit anyway, or cancel.
+
+Sent comments stay on screen, dimmed and marked "(sent)", until you resolve them. That's on purpose: you check each one against the fix.
 - `Space r s` sends only comments that haven't been sent yet. If they've all been sent, it asks whether to send them again.
 - `Space r S` sends every comment that isn't resolved, including ones already sent.
 - To resend just some: `Space r l`, select them with `Tab`, then `Ctrl-s`.
 
-When Claude has made the fixes, press `Space r v` again. You now see only the fixes, not the earlier work. Resolve comments that are handled (`Space r r`), and add new ones for anything that isn't. When the round is done, close the review with `Space r n` so the screen is clean for the next one. If you need it again later, `Space r R` brings it back.
+When the fixes are in, press `Space r v` again. You now see only the fixes, not the earlier work. Resolve comments that are handled (`Space r r`), and add new ones for anything that isn't.
 
 ## 7. Try it end to end
 
@@ -123,9 +117,8 @@ nvim main.go
 | 6 | `Space r l` | Both comments listed |
 | 7 | `Space r s` | Your comments arrive in Claude as one message, and dim in the editor |
 | 8 | When Claude is done: `Space r v` | Only the second turn's changes (error return, table-driven test) |
-| 9 | `Space r r` on one comment, then `Space r n` | The resolved one disappears, then the rest when the review closes |
-| 9b | `Space r R`, Enter on the review | The unresolved comment is back, and `Space r S` sends it again |
-| 10 | Quit (`:qa`), reopen `nvim main.go`, `Space r l` | The review's unresolved comments are still there |
+| 9 | `Space r r` on each comment | Each disappears as it's resolved |
+| 10 | Quit (`:qa`), reopen `nvim main.go`, `Space r l` | Unresolved comments are still there |
 
 ## Troubleshooting
 
@@ -134,8 +127,7 @@ nvim main.go
 - **Claude starts a new conversation instead of resuming:** check that `./install.sh hooks` says "Hooks already registered". Without the `SessionStart` hook, resuming still works, but not after `/clear`.
 - **Want Claude to start by itself** when you open a folder or workspace: add `vim.g.agent_autostart = true` to `nvim/init.lua`.
 - **`Space r s` does nothing:** Claude isn't open. Press `Space a c` first.
-- **Comments stay after sending:** that's expected. Resolve them (`Space r r`) or close the review (`Space r n`).
-- **Old comments gone, or a comment can't be sent:** you probably closed the review. `Space r R` and Enter brings it back.
+- **Comments stay after sending:** that's expected. Resolve them (`Space r r`) once they're handled.
 - **Claude doesn't seem connected to Neovim:** run `:ClaudeCodeStatus`.
 - **Several repo tabs, one Claude:** there's one Claude per Neovim, and it runs in the repo of the tab you first opened it from. Comments on other repos still work, because they're sent with full paths.
 - **New files Claude made show in `git status` as added:** `Space r v` marks them with `git add -N` so the diff can show them. Nothing is committed.
