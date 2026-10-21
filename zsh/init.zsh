@@ -11,6 +11,7 @@ HISTFILE=$HOME/.zsh_history
 HISTSIZE=50000
 SAVEHIST=50000
 setopt extended_history share_history hist_ignore_all_dups hist_ignore_space hist_reduce_blanks
+setopt interactive_comments  # `cmd  # note` works when typed or pasted, not only in scripts
 
 # --- Completion -------------------------------------------------------------------------------
 # Homebrew's completions go last (brew shellenv puts them first) so zsh's own, richer _git
