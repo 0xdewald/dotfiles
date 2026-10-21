@@ -31,7 +31,8 @@ usage: crew <command> [args] [--json]
   slot   add NAME PATH [--clone URL] [--port-offset N] | ls | trust NAME | lease NAME --agent ID | release NAME
   agent  start ITEM [--slot S] [--role R] [--model M] [--name N] [--prompt P]
          ls | show ID|NAME | show --session SID | show --branch B [--repo R]
-         stop ID | attach-mark ID on|off
+         stop ID | background ID [--continue] [--prompt P] | revive ID [--prompt P]
+         rm ID|all [--force] | attach-mark ID on|off
   msg    post (--to AGENT | --item ID) [--kind note|work|review] [--from F] TEXT|- | ls [--to A] [--status S] | ack ID
   deliver AGENT
   comment add [flags] | add --stdin-json [--send] | ls [--item] [--branch] [--repo] [--status] | resolve ID
@@ -40,7 +41,7 @@ usage: crew <command> [args] [--json]
   serve  [--addr 127.0.0.1:7767]
   mcp    (MCP server on stdio)
 
-env: CREW_HOME, CREW_CLAUDE, CREW_NO_NOTIFY, CREW_CONFIG, JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN
+env: CREW_HOME, CREW_CLAUDE, CREW_NO_NOTIFY, CREW_CONFIG, CREW_STALE_AFTER (default 2h), JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN
 `
 
 // app carries per-invocation state.
@@ -73,6 +74,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	defer b.Close()
 	a.b = b
+	// agents idle for too long go stale; checked whenever crew runs (crew serve also checks every minute)
+	if args[0] != "mcp" && args[0] != "serve" {
+		b.Sweep()
+	}
 	if err := a.dispatch(args); err != nil {
 		fmt.Fprintln(stderr, "crew:", err)
 		var ue usageError

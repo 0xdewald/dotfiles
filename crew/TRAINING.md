@@ -251,7 +251,17 @@ ID  NAME              STATUS    STAGE   BRANCH          SLOT      MSGS  LAST
 2   Lazy Muffins      idle      coding  agent/session…  slot-two  0     I found it in config/session.ts…
 ```
 
-- **STATUS:** `starting` (just launched), `working` (busy), `idle` (finished its turn, waiting for you), `needs-input` (asking a question), `stopped`.
+- **STATUS:** `starting` (just launched), `working` (busy), `idle` (finished its turn, waiting for you), `needs-input` (asking a question), `stale` (left idle too long, see below), `stopped`.
+
+**Stale agents.** An agent that sits idle (or waiting for input) for more than 2 hours goes **stale**: crew stops its background process so it isn't left running for nothing. It keeps its slot, branch and conversation, and doesn't run again, even when you message it, until you revive it:
+
+```sh
+AGENT="Sneaky Sprockets"           # ← change
+crew agent revive "$AGENT"                                   # back in the background, with any waiting messages
+crew agent revive "$AGENT" --prompt "Carry on with the tests."   # ← change: or with a new instruction
+```
+
+Opening it in Neovim (step 9) revives it too. To change the limit, add `CREW_STALE_AFTER=4h` (or `90m`, …) to `~/.config/crew/env`.
 - **LAST:** the agent's last message, recorded when it finishes a turn. You also get a macOS notification: "crew: Lazy Muffins is done".
 
 Details for one agent:
@@ -290,6 +300,7 @@ message 1 to Sneaky Sprockets: pending
 - If the agent is **idle or stopped**, crew delivers it straight away by resuming the session with your message.
 - If it's **busy**, the message waits and is delivered the moment the agent finishes its turn.
 - If the agent is **open in your Neovim**, the message is typed into its Claude split instead.
+- If the agent is **stale**, the message waits until you revive it, and crew tells you so.
 
 Check delivery:
 
@@ -315,7 +326,11 @@ Press `Space m m`, move to the agent, and press **Enter**. Neovim then:
 3. resumes the same conversation in the Claude split on the right, connected to Neovim like your normal Claude,
 4. tells the board the agent is "attached", so new messages and comments go into this split.
 
-You can now type to the agent directly, as you would with any Claude in Neovim. When you close its Claude split (or quit Neovim), the board takes it back: anything sent to it after that is delivered in the background again.
+You can now type to the agent directly, as you would with any Claude in Neovim.
+
+**Sending it back to the background.** Press `Space m b`. Neovim stops its Claude split and crew resumes the same conversation in the background. If the agent was in the middle of a turn, crew tells it to continue where it left off, so its work carries on. You get the id to watch it with: `claude attach <id>`.
+
+You don't have to remember this: **quitting Neovim, closing the agent's Claude split, or opening a different agent does the same**, so an agent's work never stops because Neovim closed. (A turn that was running is interrupted for a moment and picks up again in the background.)
 
 ---
 
@@ -375,6 +390,14 @@ crew agent stop "$AGENT"
 crew slot ls                       # its slot shows "-" again
 ```
 
+Remove agents you're done with from the board. Their Claude conversations aren't deleted, and their work item goes back to `queued`:
+
+```sh
+crew agent rm "$AGENT"             # a stopped agent
+crew agent rm "$AGENT" --force     # a running one: stops it first
+crew agent rm all                  # every stopped agent
+```
+
 Close a work item you don't need:
 
 ```sh
@@ -406,7 +429,7 @@ crew event ls | tail -20
 | `branch agent/X is locked by slot Y` | Another agent has that branch. Stop it (`crew agent stop …`) or use another branch. |
 | `no free slot` | All slots are busy. Stop an agent, or add a slot (step 3). |
 | An agent stays `starting` | It hasn't finished its first turn yet, or the hooks aren't registered. Check with `jq '.hooks | keys' ~/.claude/settings.json`, and run `~/dotfiles/install.sh hooks` if `Stop` is missing. |
-| A message stays `pending` | The agent is still busy, or open in Neovim. It's delivered when the agent finishes its turn. |
+| A message stays `pending` | The agent is still busy, or open in Neovim: it's delivered when the agent finishes its turn. If the agent is `stale`, revive it: `crew agent revive <name>`. |
 | `warning: JIRA_… not set` | Only the key was stored. Connect Jira (step 2) or paste the details as text. |
 
 **Where things are:**
@@ -439,6 +462,7 @@ crew item new --ticket N [--branch agent/x]  &&  crew item move N queued
 # agents
 crew agent start ITEM [--slot S] [--prompt "…"] [--model M]
 crew agent ls  |  crew agent show NAME  |  crew agent stop NAME
+crew agent revive NAME [--prompt "…"]  |  crew agent rm NAME|all [--force]
 crew msg post --to NAME "…"  |  crew msg ls --to NAME
 
 # review and progress
@@ -447,7 +471,8 @@ crew item move N pushed|reviewing|coding|pr-draft|closed
 crew event ls | tail
 
 # Neovim
-Space m m   dashboard (Enter open · Ctrl-s message · Ctrl-x stop)
+Space m m   dashboard (Enter open · Ctrl-s message · Ctrl-r revive · Ctrl-x stop)
+Space m b   send the open agent back to the background (quitting Neovim does this too)
 Space r v / r V / r N   diff last turn / uncommitted / commit range
 Space r c / r s         comment / send
 ```

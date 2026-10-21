@@ -559,3 +559,94 @@ func TestStopWaitsForFinalMessage(t *testing.T) {
 		t.Fatalf("last message = %q, want the final one", a.LastMessage)
 	}
 }
+
+func TestBackgroundAfterNeovim(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	b.SetAttached(a.Name, true)
+	b.PostMessage(PostOpts{To: a.Name, Text: "also add a test"}) // attached: waits for the client
+	// idle: goes back with the waiting message
+	a, err := b.Background(a.Name, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := f.Calls(t)
+	last := calls[len(calls)-1].Args
+	if !slices.Equal(last[:3], []string{"--bg", "--resume", a.SessionID}) || !strings.Contains(last[3], "also add a test") {
+		t.Fatalf("resume args = %q", last)
+	}
+	if a.Attached || a.Status != StatusWorking || a.Pending != 0 {
+		t.Fatalf("%+v", a)
+	}
+	// interrupted mid-turn: told to continue
+	a, _ = b.Background(a.Name, true, "")
+	last = f.Calls(t)[len(f.Calls(t))-1].Args
+	if !strings.Contains(last[len(last)-1], "Continue where you left off") {
+		t.Fatalf("no continue prompt: %q", last)
+	}
+}
+
+func TestStaleAndRevive(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	hook(t, b, "Stop", a.SessionID, writeTranscript(t, "done"))
+	if s, _ := b.Sweep(); len(s) != 0 {
+		t.Fatal("went stale too early")
+	}
+	real := b.Now
+	b.Now = func() time.Time { return real().Add(3 * time.Hour) }
+	stale, _ := b.Sweep()
+	b.Now = real
+	if len(stale) != 1 || stale[0].Status != StatusStale || stale[0].BgID != "" {
+		t.Fatalf("stale = %+v", stale)
+	}
+	if last := f.Calls(t)[len(f.Calls(t))-1].Args; last[0] != "stop" {
+		t.Fatalf("background session not stopped: %q", last)
+	}
+	n := len(f.Calls(t))
+	m, _ := b.PostMessage(PostOpts{To: a.Name, Text: "are you there?"})
+	if m.Status != "pending" || len(f.Calls(t)) != n {
+		t.Fatal("stale agent was resumed by a message")
+	}
+	if s, _ := b.Slot("s1"); s.Agent == "" {
+		t.Fatal("stale agent lost its slot")
+	}
+	r, err := b.Revive(a.Name, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := f.Calls(t)[len(f.Calls(t))-1].Args
+	if r.Status != StatusWorking || last[1] != "--resume" || !strings.Contains(last[len(last)-1], "are you there?") {
+		t.Fatalf("revive: %+v %q", r, last)
+	}
+	if _, err := b.Revive(a.Name, ""); err == nil {
+		t.Fatal("revived an agent that's already running")
+	}
+}
+
+func TestRemoveAgents(t *testing.T) {
+	b, _, _, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	if _, err := b.RemoveAgent(a.Name, false); err == nil || !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("removed a running agent: %v", err)
+	}
+	if _, err := b.RemoveAgent(a.Name, true); err != nil {
+		t.Fatal(err)
+	}
+	if as, _ := b.Agents(); len(as) != 0 {
+		t.Fatal("agent still listed")
+	}
+	if it, _ = b.Item(it.ID); it.AgentID != nil || it.Stage != "queued" {
+		t.Fatalf("item not freed: %+v", it)
+	}
+	if s, _ := b.Slot("s1"); s.Agent != "" {
+		t.Fatal("slot not freed")
+	}
+	// all: only stopped ones without --force
+	a1, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	b.StopAgent(a1.Name)
+	removed, err := b.RemoveAll(false)
+	if err != nil || len(removed) != 1 {
+		t.Fatalf("rm all: %v %d", err, len(removed))
+	}
+}

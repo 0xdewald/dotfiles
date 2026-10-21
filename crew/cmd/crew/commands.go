@@ -450,8 +450,64 @@ func (a *app) agent(sub string, args []string) error {
 			return err
 		}
 		return a.out(ag, func() { fmt.Fprintf(a.stdout, "%s attached=%v\n", ag.Name, ag.Attached) })
+	case "background", "bg":
+		fs := flag.NewFlagSet("agent background", flag.ContinueOnError)
+		cont := fs.Bool("continue", false, "it was interrupted mid-turn: tell it to continue where it left off")
+		prompt := fs.String("prompt", "", "something to tell it as it goes back")
+		pos, err := parse(fs, args, 1)
+		if err != nil {
+			return err
+		}
+		ag, err := a.b.Background(pos[0], *cont, *prompt)
+		if err != nil {
+			return err
+		}
+		return a.out(ag, func() {
+			fmt.Fprintf(a.stdout, "%s is running in the background (%s) · watch it: claude attach %s\n", ag.Name, ag.Status, ag.BgID)
+		})
+	case "revive":
+		fs := flag.NewFlagSet("agent revive", flag.ContinueOnError)
+		prompt := fs.String("prompt", "", "something to tell it as it comes back")
+		pos, err := parse(fs, args, 1)
+		if err != nil {
+			return err
+		}
+		ag, err := a.b.Revive(pos[0], *prompt)
+		if err != nil {
+			return err
+		}
+		return a.out(ag, func() {
+			fmt.Fprintf(a.stdout, "revived %s (%s) · watch it: claude attach %s\n", ag.Name, ag.Status, ag.BgID)
+		})
+	case "rm":
+		fs := flag.NewFlagSet("agent rm", flag.ContinueOnError)
+		force := fs.Bool("force", false, "also remove running agents (stops them first)")
+		pos, err := parse(fs, args, 1)
+		if err != nil {
+			return err
+		}
+		var removed []*board.Agent
+		if pos[0] == "all" {
+			removed, err = a.b.RemoveAll(*force)
+		} else {
+			var ag *board.Agent
+			if ag, err = a.b.RemoveAgent(pos[0], *force); ag != nil {
+				removed = append(removed, ag)
+			}
+		}
+		if err != nil {
+			return err
+		}
+		return a.out(removed, func() {
+			if len(removed) == 0 {
+				fmt.Fprintln(a.stdout, "nothing to remove (only stopped agents; --force for running ones)")
+			}
+			for _, ag := range removed {
+				fmt.Fprintf(a.stdout, "removed %s\n", ag.Name)
+			}
+		})
 	}
-	return usageError{"agent: start | ls | show | stop | attach-mark"}
+	return usageError{"agent: start | ls | show | stop | background | revive | rm | attach-mark"}
 }
 
 // ---- messages
@@ -488,7 +544,14 @@ func (a *app) msg(sub string, args []string) error {
 		if err != nil {
 			return err
 		}
-		return a.out(m, func() { fmt.Fprintf(a.stdout, "message %d to %s: %s\n", m.ID, orDash(m.To), m.Status) })
+		return a.out(m, func() {
+			fmt.Fprintf(a.stdout, "message %d to %s: %s\n", m.ID, orDash(m.To), m.Status)
+			if m.ToAgentID != nil && m.Status == "pending" {
+				if ag, err := a.b.AgentByID(*m.ToAgentID); err == nil && ag.Status == board.StatusStale {
+					fmt.Fprintf(a.stdout, "%s is stale, so it waits until you revive it: crew agent revive %d\n", ag.Name, ag.ID)
+				}
+			}
+		})
 	case "ls":
 		fs := flag.NewFlagSet("msg ls", flag.ContinueOnError)
 		to := fs.String("to", "", "agent id or name")

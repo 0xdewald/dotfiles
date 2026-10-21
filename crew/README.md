@@ -26,7 +26,8 @@ crew item ls [--stage S] | show ID | move ID STAGE [--force]
 crew slot add NAME PATH [--clone URL] [--port-offset N] | ls | trust NAME | lease NAME --agent ID | release NAME
 crew agent start ITEM [--slot S] [--role worker] [--model M] [--name N] [--prompt P]
 crew agent ls | show ID|NAME | show --session SID | show --branch B [--repo R]
-crew agent stop ID | attach-mark ID on|off
+crew agent stop ID | background ID [--continue] [--prompt P] | revive ID [--prompt P]
+crew agent rm ID|all [--force] | attach-mark ID on|off
 crew msg post (--to AGENT | --item ID) [--kind note|work|review] TEXT|- | ls [--to A] [--status S] | ack ID
 crew deliver AGENT
 crew comment add [--item --document --parent --repo --branch --commit --file --start --end --excerpt-file F|- --text --author] [--send]
@@ -47,19 +48,28 @@ follow the lifecycle in the plan (any stage may go to closed or escalated);
 ## How agents run
 
 `crew agent start` leases a slot, takes the repo+branch lock, checks out the
-item's branch and runs
-`$CREW_CLAUDE --bg --session-id <uuid> -n "<Name>" --permission-mode <mode>`
-in the slot, with `CREW_AGENT_ID`, `CREW_SESSION_ID`, `CREW_HOME`,
-`CREW_PORT_OFFSET` and `CREW_PROCESS_PREFIX` set.
+item's branch and runs `$CREW_CLAUDE --bg -n "<Name>" --permission-mode <mode>`
+in the slot, with `CREW_AGENT_ID`, `CREW_AGENT_NAME`, `CREW_HOME`,
+`CREW_PORT_OFFSET` and `CREW_PROCESS_PREFIX` set. `claude --bg` picks the
+session id itself and prints `backgrounded · <short id> · …`; crew reads that
+and looks up the full id with `claude agents --json`.
 
 Messages to an idle or stopped agent are delivered right away by
-`claude stop <bg>` then `claude --bg --resume <session> "<prompt>"`. A busy
-agent gets them on its next `Stop` hook. An agent marked attached (a client is
-showing its terminal) is never resumed: the client types the message in and
-calls `crew msg ack ID`.
+`claude stop <bg>` then `claude --bg --resume <session> "<prompt>"` (or a fresh
+start if it never got a prompt). A busy agent gets them on its next `Stop`
+hook. An attached agent (open in a client) is never resumed: the client types
+the message in and calls `crew msg ack ID`. When the client lets it go,
+`crew agent background ID [--continue]` resumes it in the background.
 
-Register `crew event --hook` for the `UserPromptSubmit`, `Stop` and
-`Notification` hooks. It ignores sessions that aren't crew agents.
+Agents idle or waiting for input longer than `CREW_STALE_AFTER` (default 2h)
+go `stale`: crew stops their background session (checked whenever crew runs,
+and every minute under `crew serve`). Nothing resumes a stale agent, and
+messages to it wait, until `crew agent revive ID`.
+
+Register `crew event --hook` for the `SessionStart`, `UserPromptSubmit`, `Stop`
+and `Notification` hooks (`install.sh` does). It ignores sessions that aren't
+crew agents, and follows an agent to a new session (fresh start, `/clear`,
+opened in Neovim) through `CREW_AGENT_ID` in the hook's environment.
 
 ## HTTP API
 
@@ -84,6 +94,7 @@ POST `/api/items/{id}/move` `{stage, force}`, `/api/messages`
 | `CREW_HOME` | board directory |
 | `CREW_CLAUDE` | claude binary (default `claude`) |
 | `CREW_NO_NOTIFY=1` | no macOS notifications |
+| `CREW_STALE_AFTER` | how long an agent may sit idle before it goes stale (default `2h`) |
 | `CREW_CONFIG` | config file path |
 | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` | fetch tickets via Jira REST v3 |
 | `CREW_AGENT_ID` | set for agents; identifies the caller to `crew mcp` and `msg post` |

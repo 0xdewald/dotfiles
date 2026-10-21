@@ -47,7 +47,7 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 	data := map[string]any{"hook": p.Event}
 	switch p.Event {
 	case "SessionStart":
-		if a.Status == StatusStarting || a.Status == StatusStopped {
+		if a.Status == StatusStarting || a.Status == StatusStopped || a.Status == StatusStale {
 			err = b.setStatus(a.ID, StatusIdle, nil) // ready and waiting for a prompt
 		}
 	case "UserPromptSubmit":

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/0xdewald/dotfiles/crew/internal/api"
 	"github.com/0xdewald/dotfiles/crew/internal/mcpserver"
@@ -19,6 +20,11 @@ func (a *app) serve(args []string) error {
 		return err
 	}
 	fmt.Fprintln(a.stderr, "crew: serving", a.b.Home, "on http://"+*addr)
+	go func() { // agents idle for too long go stale
+		for range time.Tick(time.Minute) {
+			a.b.Sweep()
+		}
+	}()
 	return http.ListenAndServe(*addr, api.Handler(a.b))
 }
 

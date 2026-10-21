@@ -86,7 +86,9 @@ A local board for running several Claude agents side by side, each in its own ch
 What works so far (milestone 1):
 - A slot is the agent's own checkout, separate from yours. Create one with `crew slot add slot-one ~/agents/slot-one/core --clone <repo url>` (or clone it yourself and leave out `--clone`), then `crew slot trust slot-one` once so Claude may work there.
 - `crew ticket add "read jira ticket VD-123 …"`, `crew item new --ticket 1`, `crew item move 1 queued`, then `crew agent start 1` starts a background Claude on `agent/<ticket>` in a free slot, with its own ports and process-name prefix.
-- `Space mm` opens the crew dashboard: agents with status, stage, branch and last message, refreshed every few seconds. Enter opens the agent in a new tab, with its session in the Claude split. `Ctrl-s` sends it a message, `Ctrl-x` stops it.
+- `Space mm` opens the crew dashboard: agents with status, stage, branch and last message, refreshed every few seconds. Enter opens the agent in a new tab, with its session in the Claude split. `Ctrl-s` sends it a message, `Ctrl-r` revives a stale one, `Ctrl-x` stops it.
+- `Space mb` sends the open agent back to the background, continuing where it left off if it was mid-turn. Quitting Neovim, closing its Claude split or opening another agent does the same, so an agent never stops because Neovim closed.
+- Agents left idle for 2 hours (`CREW_STALE_AFTER`) go stale: their background process stops and messages wait until `crew agent revive <name>`. `crew agent rm <name>|all` clears agents off the board.
 - Review comments (`Space rc`, `Space rs`) on an agent's branch go to the board, which hands them to that agent: straight into the Claude split if it's open in Neovim, otherwise by resuming it in the background.
 - When an agent finishes a turn you get a macOS notification ("crew: Fuzzy Muffins is done").
 - `Space rN` reviews a range of commits.
@@ -203,7 +205,7 @@ Leader is **Space**. Press it and wait to see everything in which-key.
 | `Space as` (visual) / `ab` / `aa` / `ad` | Claude: send selection / add buffer / accept diff / deny diff |
 | `Space rc` / `rl` / `rd` / `rr` / `rs` | Review: comment (line or selection) / list / delete / resolve / send to Claude |
 | `Space rN` | Review: diff a range of commits (last n, or since a commit/branch) |
-| `Space mm` / `ms` | Crew: dashboard of agents / board status |
+| `Space mm` / `mb` / `ms` | Crew: dashboard of agents / send the open agent to the background / board status |
 | `Space rS` / `rn` / `rR` / `rX` / `rt` | Review: send all unresolved again / close review / list reviews / delete review / hide-show comments |
 | `Space rv` / `rV` / `rq` | Review: diff last agent turn / diff all vs HEAD / close diff |
 

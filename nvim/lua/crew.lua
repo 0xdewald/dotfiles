@@ -44,9 +44,25 @@ end
 -- Agent attached in this Neovim (its session runs in the Claude split), if any
 local function attached() return vim.g.claude_agent end
 
-local function detach()
+-- Hand the open agent back to the board, which runs its conversation in the background again
+-- (continuing where it left off if it was mid-turn). Space mb does this; so do quitting Neovim,
+-- closing the agent's Claude split and opening another agent, so its work never stops with Neovim.
+local handing_off = false
+function M.background()
   local a = attached()
-  if a then M.run({ "agent", "attach-mark", tostring(a.id), "off" }) end
+  if not a then return notify("no crew agent is open here (Space mm to open one)", vim.log.levels.WARN) end
+  local now = M.run({ "agent", "show", tostring(a.id) }) or a
+  local mid_turn = now.status == "working" or now.status == "needs-input"
+  handing_off = true
+  if require("agent").claude_buf() then require("agent").stop() end
+  vim.g.claude_agent = nil
+  handing_off = false
+  local args = { "agent", "background", tostring(a.id) }
+  if mid_turn then table.insert(args, "--continue") end
+  local res, err = M.run(args)
+  if not res then return notify(a.name .. ": " .. err, vim.log.levels.ERROR) end
+  notify(("%s continues in the background%s · claude attach %s"):format(a.name,
+    mid_turn and " where it left off" or "", res.bg_id))
 end
 
 -- Deliver messages the board kept for the attached agent into the Claude split
@@ -96,7 +112,7 @@ function M.open(a)
     require("claudecode.terminal").ensure_visible({})
     return
   end
-  detach()
+  if attached() then M.background() end -- another agent was open here
   agent.stop()
   -- the session may still be running in the background; stop it there before resuming it here
   if a.bg_id and a.bg_id ~= "" then
@@ -117,10 +133,11 @@ end
 
 local function status_hl(s)
   return ({ working = "DiagnosticInfo", idle = "DiagnosticOk", ["needs-input"] = "DiagnosticWarn",
-    stopped = "Comment", starting = "DiagnosticHint" })[s] or "Normal"
+    stopped = "Comment", stale = "Comment", starting = "DiagnosticHint" })[s] or "Normal"
 end
 
--- Space mm: the agents on the board. Enter opens one, Ctrl-s sends it a message, Ctrl-x stops it.
+-- Space mm: the agents on the board. Enter opens one, Ctrl-s sends it a message, Ctrl-r revives a
+-- stale or stopped one, Ctrl-x stops it.
 function M.dashboard()
   local agents, err = M.run({ "agent", "ls" })
   if not agents then return notify(err, vim.log.levels.WARN) end
@@ -170,27 +187,34 @@ function M.dashboard()
           if not text or vim.trim(text) == "" then return end
           local m, e = M.run({ "msg", "post", "--to", tostring(item.agent.id), "--from", "you", text })
           if m then notify(("message %s for %s"):format(m.status, item.agent.name)) else notify(e, vim.log.levels.ERROR) end
-          p:find({ refresh = true })
+          p:refresh()
         end)
+      end,
+      crew_revive = function(p, item)
+        if not item then return end
+        local r, e = M.run({ "agent", "revive", tostring(item.agent.id) })
+        if r then notify(("revived %s (%s)"):format(r.name, r.status)) else notify(e, vim.log.levels.WARN) end
+        p:refresh()
       end,
       crew_stop = function(p, item)
         if not item then return end
         if vim.fn.confirm(("Stop %s and free its slot?"):format(item.agent.name), "&Yes\n&No", 2) ~= 1 then return end
         local _, e = M.run({ "agent", "stop", tostring(item.agent.id) })
         if e then notify(e, vim.log.levels.ERROR) end
-        p:find({ refresh = true })
+        p:refresh()
       end,
     },
     win = { input = { keys = {
       ["<c-s>"] = { "crew_message", mode = { "n", "i" }, desc = "Message agent" },
       ["<c-x>"] = { "crew_stop", mode = { "n", "i" }, desc = "Stop agent" },
+      ["<c-r>"] = { "crew_revive", mode = { "n", "i" }, desc = "Revive a stale or stopped agent" },
     } } },
     on_close = function() if timer then timer:stop(); timer:close() end end,
   })
   -- keep statuses current while the dashboard is open
   timer = vim.uv.new_timer()
   timer:start(3000, 3000, vim.schedule_wrap(function()
-    if picker and not picker.closed then picker:find({ refresh = true }) end
+    if picker and not picker.closed then picker:refresh() end -- keeps the cursor where it is
   end))
 end
 
@@ -226,17 +250,18 @@ function M.setup()
     vim.notify(vim.inspect(s), vim.log.levels.INFO, { title = "Crew status" })
   end, { desc = "Crew status" })
   local group = vim.api.nvim_create_augroup("crew", { clear = true })
-  vim.api.nvim_create_autocmd("VimLeavePre", { group = group, callback = detach })
-  -- the Claude split for an attached agent closed: let the board deliver to it in the background again
+  vim.keymap.set("n", "<leader>mb", M.background, { desc = "Send agent to the background" })
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = group,
+    callback = function() if attached() then M.background() end end,
+  })
+  -- the open agent's Claude split closed (or Claude exited): it carries on in the background
   vim.api.nvim_create_autocmd({ "TermClose", "BufWipeout" }, {
     group = group,
     callback = function(ev)
-      if not (attached() and vim.bo[ev.buf].buftype == "terminal") then return end
+      if handing_off or not (attached() and vim.bo[ev.buf].buftype == "terminal") then return end
       vim.schedule(function()
-        if attached() and not require("agent").claude_buf() then
-          detach()
-          vim.g.claude_agent = nil
-        end
+        if not handing_off and attached() and not require("agent").claude_buf() then M.background() end
       end)
     end,
   })
