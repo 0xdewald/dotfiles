@@ -76,10 +76,16 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 			b.Exec.Notify("crew: "+a.Name+" is done", truncate(oneLine(last), 120))
 		}
 	case "Notification":
+		data["message"] = p.Message
+		// "Claude is waiting for your input" is the reminder Claude sends a while after a turn
+		// ended: the agent is idle, not asking for anything. Other notifications (a permission
+		// prompt, a question) mean it's blocked on a human.
+		if strings.Contains(strings.ToLower(p.Message), "waiting for your input") {
+			break
+		}
 		if err = b.setStatus(a.ID, StatusNeedsInput, nil); err != nil {
 			break
 		}
-		data["message"] = p.Message
 		msg := p.Message
 		if msg == "" {
 			msg = "needs your input"

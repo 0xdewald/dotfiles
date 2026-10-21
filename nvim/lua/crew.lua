@@ -57,7 +57,6 @@ function M.background()
     if require("agent").claude_buf() then require("agent").stop() end
     vim.g.claude_agent = nil
     handing_off = false
-    M.run({ "agent", "attach-mark", tostring(a.id), "off" })
     return notify(a.name .. " keeps running in the background")
   end
   local now = M.run({ "agent", "show", tostring(a.id) }) or a
@@ -79,7 +78,7 @@ local poll
 local function deliver_pending()
   local a = attached()
   local agent = require("agent")
-  if not (a and agent.claude_buf()) then return end
+  if not (a and not a.viewing and agent.claude_buf()) then return end
   local msgs = M.run({ "msg", "ls", "--to", tostring(a.id), "--status", "pending" })
   if not (msgs and #msgs > 0) then return end
   local text = table.concat(vim.tbl_map(function(m) return m.text end, msgs), "\n\n---\n\n")
@@ -125,7 +124,8 @@ function M.open(a)
       vim.cmd("tabnew")
       vim.cmd.tcd(vim.fn.fnameescape(a.dir))
     end
-    M.run({ "agent", "attach-mark", tostring(a.id), "on" })
+    -- not marked attached: the board keeps delivering messages by resuming it, which is reliable;
+    -- typing into the live view isn't
     agent.view(a.bg_id, { track = false, env = agent_env(a), agent = vim.tbl_extend("force", a, { viewing = true }), name = a.name })
     return notify(("watching %s live (%s): it keeps running in the background%s"):format(a.name, a.status,
       a.status == "needs-input" and " · it's waiting for your answer" or ""))

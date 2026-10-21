@@ -761,3 +761,31 @@ func TestSlotPermissions(t *testing.T) {
 		t.Fatalf("permissions file shows up in git status: %s", st)
 	}
 }
+
+// Claude's idle reminder isn't a request; a message to an agent waiting on a human is delivered
+func TestNeedsInputAndIdleReminder(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	hook(t, b, "Stop", a.SessionID, writeTranscript(t, "Decisions I need from you: ..."))
+	hookMsg := func(msg string) {
+		raw, _ := json.Marshal(map[string]string{"hook_event_name": "Notification", "session_id": a.SessionID, "message": msg})
+		if _, err := b.HandleHook(raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hookMsg("Claude is waiting for your input")
+	if a2, _ := b.AgentByID(a.ID); a2.Status != StatusIdle {
+		t.Fatalf("idle reminder changed status to %s", a2.Status)
+	}
+	hookMsg("Claude needs your permission to use Bash")
+	if a2, _ := b.AgentByID(a.ID); a2.Status != StatusNeedsInput {
+		t.Fatalf("permission prompt: status %s", a2.Status)
+	}
+	m, err := b.PostMessage(PostOpts{To: a.Name, Text: "1: yes. 2: no."})
+	if err != nil || m.Status != "delivered" {
+		t.Fatalf("message to a needs-input agent: %v %+v", err, m)
+	}
+	if last := f.Calls(t)[len(f.Calls(t))-1].Args; last[len(last)-1] != "1: yes. 2: no." {
+		t.Fatalf("resume args %q", last)
+	}
+}

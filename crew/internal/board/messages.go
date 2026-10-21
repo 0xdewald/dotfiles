@@ -208,7 +208,9 @@ func (b *Board) deliver(id int64) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if a.Attached || (a.Status != StatusIdle && a.Status != StatusStopped) {
+	// idle, stopped, or waiting on a human (a message is the human's answer); not while it's
+	// working, starting, stale (until revived) or open in a client
+	if a.Attached || (a.Status != StatusIdle && a.Status != StatusStopped && a.Status != StatusNeedsInput) {
 		return 0, nil
 	}
 	msgs, err := b.pending(id)
