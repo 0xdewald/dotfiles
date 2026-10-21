@@ -123,7 +123,11 @@ end
 function M.stop()
   local buf = claude_buf()
   if not buf then return end
-  pcall(vim.fn.jobstop, vim.b[buf].terminal_job_id)
+  local job = vim.b[buf].terminal_job_id
+  pcall(vim.fn.jobstop, job)
+  -- wait for the process to exit, so its session is free: resuming it elsewhere (crew hands an
+  -- agent back to the background) otherwise gets a copy of the conversation instead
+  if job then pcall(vim.fn.jobwait, { job }, 5000) end
   require("claudecode.terminal").close()
   vim.wait(3000, function() return claude_buf() == nil end, 20)
   if claude_buf() then pcall(vim.api.nvim_buf_delete, buf, { force = true }) end
