@@ -327,14 +327,16 @@ From Neovim: in the dashboard (`Space m m`), select the agent and press `Ctrl-s`
 nvim
 ```
 
-Press `Space m m`, move to the agent, and press **Enter**.
+Press `Space m m` and move to the agent. You have two ways to open it:
 
-**If the agent is busy or waiting for permission** (`working` or `needs-input`), Neovim opens a **live view** of its background session in the Claude split, in its folder's tab. It keeps running in the background: you watch it, answer its permission prompt, or type to it, and closing the view (or `Space m b`, or quitting Neovim) just stops watching.
+**Enter: peek.** A floating panel over the editor, with the agent's name, status and branch in its border.
+- A running agent shows **live**: watch it, answer a permission prompt, or type to it. Close the panel (`Esc Esc`, then `q`) and it carries on in the background. Nothing is stopped or moved, and your own Claude side panel isn't touched.
+- A stale or stopped agent shows its **conversation read-only**: `r` revives it, `t` takes it over, `q` closes.
 
-**If it's idle, stale or stopped**, Neovim takes it over:
+**Ctrl-t: take over.** The agent moves into the Claude side panel, connected to Neovim: it sees your file and selection, and its edits show as diffs. Use this to work with it closely. If it's in the middle of a turn, Neovim asks first, because taking over interrupts that turn. When you take it over, Neovim:
 1. stops the agent's background session (its conversation is kept),
-2. opens a new tab in the agent's slot folder,
-3. resumes the same conversation in the Claude split on the right, connected to Neovim like your normal Claude,
+2. opens its folder's tab (or a new one),
+3. resumes the same conversation in the Claude split on the right,
 4. tells the board the agent is "attached", so new messages and comments go into this split.
 
 You can now type to the agent directly, as you would with any Claude in Neovim.
@@ -482,7 +484,7 @@ crew item move N pushed|reviewing|coding|pr-draft|closed
 crew event ls | tail
 
 # Neovim
-Space m m   dashboard (Enter open · Ctrl-s message · Ctrl-r revive · Ctrl-x stop)
+Space m m   dashboard (Enter peek · Ctrl-t take over · Ctrl-s message · Ctrl-r revive · Ctrl-x stop)
 Space m b   send the open agent back to the background (quitting Neovim does this too)
 Space r v / r V / r N   diff last turn / uncommitted / commit range
 Space r c / r s         comment / send

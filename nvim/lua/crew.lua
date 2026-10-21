@@ -48,6 +48,7 @@ local function attached() return vim.g.claude_agent end
 -- (continuing where it left off if it was mid-turn). Space mb does this; so do quitting Neovim,
 -- closing the agent's Claude split and opening another agent, so its work never stops with Neovim.
 local handing_off = false
+local agent_term_buf -- the Claude side panel's terminal for the agent taken over here
 function M.background()
   local a = attached()
   if not a then return notify("no crew agent is open here (Space mm to open one)", vim.log.levels.WARN) end
@@ -115,21 +116,17 @@ function M.open(a)
     require("claudecode.terminal").ensure_visible({})
     return
   end
+  -- Taking over a busy agent interrupts its turn (and cancels a prompt it's waiting on): ask first.
+  -- Enter in the dashboard peeks instead, which doesn't.
+  if a.status == "working" or a.status == "needs-input" then
+    local what = a.status == "working" and "is working" or "is waiting for an answer"
+    local choice = vim.fn.confirm(("%s %s. Taking it over interrupts that; it continues here. Take over?"):format(a.name, what),
+      "&Take over\n&Peek instead\n&Cancel", 2)
+    if choice == 2 then return M.peek(a) end
+    if choice ~= 1 then return end
+  end
   if attached() then M.background() end -- another agent was open here
   agent.stop()
-  -- Busy or waiting for permission in the background: watch it live there instead of taking it
-  -- over, which would interrupt its turn (and cancel a permission prompt it's waiting on)
-  if (a.status == "working" or a.status == "needs-input") and a.bg_id and a.bg_id ~= "" then
-    if not goto_tab(a.dir) then
-      vim.cmd("tabnew")
-      vim.cmd.tcd(vim.fn.fnameescape(a.dir))
-    end
-    -- not marked attached: the board keeps delivering messages by resuming it, which is reliable;
-    -- typing into the live view isn't
-    agent.view(a.bg_id, { track = false, env = agent_env(a), agent = vim.tbl_extend("force", a, { viewing = true }), name = a.name })
-    return notify(("watching %s live (%s): it keeps running in the background%s"):format(a.name, a.status,
-      a.status == "needs-input" and " · it's waiting for your answer" or ""))
-  end
   -- the session may still be running in the background; stop it there before resuming it here
   if a.bg_id and a.bg_id ~= "" then
     vim.system({ vim.env.CREW_CLAUDE or "claude", "stop", a.bg_id }):wait()
@@ -144,6 +141,9 @@ function M.open(a)
   -- a fresh session; the board takes it over once you use it (crew follows CREW_AGENT_ID).
   local sid = (a.conversation and a.conversation ~= "") and a.conversation or nil
   agent.start(sid, { track = false, resume = sid ~= nil, env = agent_env(a), agent = a, name = a.name })
+  agent_term_buf = nil
+  vim.wait(3000, function() return agent.claude_buf() ~= nil end, 20)
+  agent_term_buf = agent.claude_buf()
   notify(("%s · %s · %s"):format(a.name, a.branch or "?", vim.fn.fnamemodify(a.dir, ":~")))
 end
 
@@ -152,8 +152,95 @@ local function status_hl(s)
     stopped = "Comment", stale = "Comment", starting = "DiagnosticHint" })[s] or "Normal"
 end
 
--- Space mm: the agents on the board. Enter opens one, Ctrl-s sends it a message, Ctrl-r revives a
--- stale or stopped one, Ctrl-x stops it.
+-- Peek: a floating panel over the editor to read an agent, check it and leave it running.
+-- A running agent shows live (`claude attach`, a plain terminal, separate from the Claude side
+-- panel): you can watch it, answer a prompt or type to it, and closing the float leaves it running
+-- in the background. One that isn't running (stale, stopped) shows its conversation read-only.
+local function title_for(a)
+  return (" %s · %s · %s "):format(a.name, a.status or "?", a.branch or "-")
+end
+
+local function float_opts(a, footer)
+  local size = vim.g.crew_float_size or 0.85
+  return {
+    position = "float", width = size, height = size, border = "rounded",
+    title = title_for(a), title_pos = "center", footer = footer, footer_pos = "center",
+  }
+end
+
+-- last messages of the agent's conversation, as markdown lines
+local function conversation_lines(a)
+  local conv = a.conversation ~= "" and a.conversation or a.session_id
+  local home = vim.env.CLAUDE_CONFIG_DIR or (vim.env.HOME .. "/.claude")
+  local file = ("%s/projects/%s/%s.jsonl"):format(home, ((vim.uv.fs_realpath(a.dir) or a.dir):gsub("[^%w]", "-")), conv or "")
+  local ok, raw = pcall(vim.fn.readfile, file)
+  if not ok then return { "(no conversation yet)" } end
+  local turns = {}
+  for _, line in ipairs(raw) do
+    local okj, e = pcall(vim.json.decode, line)
+    local c = okj and type(e) == "table" and (e.type == "user" or e.type == "assistant") and e.message and e.message.content
+    if type(c) == "table" then
+      c = table.concat(vim.tbl_map(function(part) return type(part) == "table" and part.type == "text" and part.text or "" end, c), "\n")
+    end
+    if type(c) == "string" and vim.trim(c) ~= "" and not c:match("^%s*<") then
+      table.insert(turns, { who = e.type == "user" and "## You" or "## " .. a.name, text = c })
+    end
+  end
+  local lines = {}
+  for i = math.max(1, #turns - 30), #turns do
+    vim.list_extend(lines, { turns[i].who, "" })
+    vim.list_extend(lines, vim.split(turns[i].text, "\n"))
+    table.insert(lines, "")
+  end
+  return #lines > 0 and lines or { "(no conversation yet)" }
+end
+
+local peek_win
+function M.peek(a)
+  a = M.run({ "agent", "show", tostring(a.id) }) or a
+  if peek_win and peek_win:valid() then peek_win:close() end
+  local live = a.bg_id and a.bg_id ~= "" and a.status ~= "stale" and a.status ~= "stopped"
+  local win
+  if live then
+    win = Snacks.terminal.open({ vim.env.CREW_CLAUDE or "claude", "attach", a.bg_id }, {
+      cwd = a.dir, interactive = true,
+      win = float_opts(a, " Esc Esc, then q: close (it keeps running) · Ctrl-t in the dashboard: take over "),
+    })
+    win:on("BufLeave", function() end) -- keep snacks' default terminal keys
+    vim.keymap.set("n", "q", function()
+      pcall(vim.fn.jobstop, vim.b[win.buf].terminal_job_id) -- ends the viewer, not the agent
+      win:close()
+    end, { buffer = win.buf, desc = "Close (agent keeps running)" })
+  else
+    win = Snacks.win(vim.tbl_extend("force", float_opts(a, " q: close · r: revive · t: take over in the side panel "), {
+      text = conversation_lines(a), ft = "markdown", bo = { modifiable = false }, wo = { wrap = true, linebreak = true },
+      keys = {
+        q = "close",
+        r = function(self)
+          self:close()
+          local r, e = M.run({ "agent", "revive", tostring(a.id) })
+          if not r then return notify(e, vim.log.levels.WARN) end
+          notify(("revived %s (%s)"):format(r.name, r.status))
+          vim.defer_fn(function() M.peek(r) end, 500)
+        end,
+        t = function(self) self:close(); M.open(a) end,
+      },
+    }))
+    vim.schedule(function() if win:valid() then vim.api.nvim_win_set_cursor(win.win, { vim.api.nvim_buf_line_count(win.buf), 0 }) end end)
+  end
+  peek_win = win
+  -- keep the status in the border current while it's open
+  local timer = vim.uv.new_timer()
+  timer:start(3000, 3000, vim.schedule_wrap(function()
+    if not win:valid() then timer:stop(); timer:close(); return end
+    local now = M.run({ "agent", "show", tostring(a.id) })
+    if now then pcall(win.set_title, win, title_for(now), "center") end
+  end))
+end
+
+-- Space mm: the agents on the board. Enter peeks at one in a floating panel, Ctrl-t takes it over
+-- in the Claude side panel, Ctrl-s sends it a message, Ctrl-r revives a stale or stopped one,
+-- Ctrl-x stops it.
 function M.dashboard()
   local agents, err = M.run({ "agent", "ls" })
   if not agents then return notify(err, vim.log.levels.WARN) end
@@ -194,7 +281,7 @@ function M.dashboard()
     end,
     confirm = function(p, item)
       p:close()
-      if item then M.open(item.agent) end
+      if item then M.peek(item.agent) end
     end,
     actions = {
       crew_message = function(p, item)
@@ -205,6 +292,10 @@ function M.dashboard()
           if m then notify(("message %s for %s"):format(m.status, item.agent.name)) else notify(e, vim.log.levels.ERROR) end
           p:refresh()
         end)
+      end,
+      crew_take_over = function(p, item)
+        p:close()
+        if item then M.open(item.agent) end
       end,
       crew_revive = function(p, item)
         if not item then return end
@@ -224,6 +315,7 @@ function M.dashboard()
       ["<c-s>"] = { "crew_message", mode = { "n", "i" }, desc = "Message agent" },
       ["<c-x>"] = { "crew_stop", mode = { "n", "i" }, desc = "Stop agent" },
       ["<c-r>"] = { "crew_revive", mode = { "n", "i" }, desc = "Revive a stale or stopped agent" },
+      ["<c-t>"] = { "crew_take_over", mode = { "n", "i" }, desc = "Take over in the Claude side panel" },
     } } },
     on_close = function() if timer then timer:stop(); timer:close() end end,
   })
@@ -275,7 +367,8 @@ function M.setup()
   vim.api.nvim_create_autocmd({ "TermClose", "BufWipeout" }, {
     group = group,
     callback = function(ev)
-      if handing_off or not (attached() and vim.bo[ev.buf].buftype == "terminal") then return end
+      -- only the agent's own Claude panel; other terminals (a peek float, the shell) don't count
+      if handing_off or not attached() or ev.buf ~= agent_term_buf then return end
       vim.schedule(function()
         if not handing_off and attached() and not require("agent").claude_buf() then M.background() end
       end)
