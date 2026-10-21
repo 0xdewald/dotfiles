@@ -139,3 +139,7 @@ nvim main.go
 - **Claude doesn't seem connected to Neovim:** run `:ClaudeCodeStatus`.
 - **Several repo tabs, one Claude:** there's one Claude per Neovim, and it runs in the repo of the tab you first opened it from. Comments on other repos still work, because they're sent with full paths.
 - **New files Claude made show in `git status` as added:** `Space r v` marks them with `git add -N` so the diff can show them. Nothing is committed.
+
+## Next: running several agents (crew)
+
+Once you're comfortable with one Claude in Neovim, [`crew/TRAINING.md`](crew/TRAINING.md) walks you through running several agents side by side, each in its own checkout and branch, with copy-paste steps.

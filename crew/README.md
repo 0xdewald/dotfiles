@@ -1,5 +1,7 @@
 # crew
 
+New here? [TRAINING.md](TRAINING.md) walks through crew step by step, with copy-paste blocks.
+
 A local work board for a crew of Claude Code agents. One Go binary keeps the
 state (tickets, work items, agents, slots, branch locks, documents, comments,
 messages, events) in SQLite, and exposes it through three doors that share

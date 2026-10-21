@@ -15,7 +15,7 @@ dotfiles/
 │   ├── claude-baseline     # Claude Code hook: snapshot before each prompt (symlinked too)
 │   ├── claude-session      # Claude Code hook: tells Neovim which session its Claude is on
 │   └── crew-hook           # Claude Code hook: reports crew agents' activity to the board
-├── crew/                   # crew: the agent board (Go; CLI, HTTP API, MCP server), see crew/README.md
+├── crew/                   # crew: the agent board (Go; CLI, HTTP API, MCP server); TRAINING.md walks through it
 └── nvim/                   # symlinked to ~/.config/nvim
     ├── init.lua            # options, keymaps, statuscolumn, lazy.nvim bootstrap
     ├── lazy-lock.json      # pinned plugin versions
@@ -81,7 +81,7 @@ Because `~/.config/nvim` is a symlink, any change you make to the config lands i
 
 ## Crew (v0.1.1, in progress)
 
-A local board for running several Claude agents side by side, each in its own checkout ("slot") on its own branch. The board (`crew`, a Go binary in `crew/`) keeps track of work items, agents, slots, branches, messages and comments. Hooks report agent activity to it. Neovim is one client; the CLI, a local HTTP API and an MCP server are the others, so a custom app can replace the Neovim side later. Details and all commands: [`crew/README.md`](crew/README.md).
+A local board for running several Claude agents side by side, each in its own checkout ("slot") on its own branch. The board (`crew`, a Go binary in `crew/`) keeps track of work items, agents, slots, branches, messages and comments. Hooks report agent activity to it. Neovim is one client; the CLI, a local HTTP API and an MCP server are the others, so a custom app can replace the Neovim side later. **New to crew? Start with [`crew/TRAINING.md`](crew/TRAINING.md)**, a hands-on walkthrough with copy-paste steps. All commands: [`crew/README.md`](crew/README.md).
 
 What works so far (milestone 1):
 - A slot is the agent's own checkout, separate from yours. Create one with `crew slot add slot-one ~/agents/slot-one/core --clone <repo url>` (or clone it yourself and leave out `--clone`).
