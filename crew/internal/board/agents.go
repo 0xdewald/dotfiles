@@ -26,13 +26,23 @@ func startArgs(name, mode, model, prompt string) []string {
 	return args
 }
 
-// Roles and their claude --permission-mode.
+// Roles and their claude --permission-mode. Workers run in the background with nobody to answer
+// permission prompts, so they use auto mode: routine actions (reading tickets, running tests,
+// committing) go ahead, risky ones still ask (the agent shows as needs-input and you're notified).
+// The other roles only read and plan. Override a role's mode with CREW_<ROLE>_PERMISSION_MODE.
 var Roles = map[string]string{
-	"worker":   "acceptEdits",
+	"worker":   "auto",
 	"techlead": "plan",
 	"intern":   "plan",
 	"reviewer": "plan",
 	"director": "plan",
+}
+
+func permissionMode(role string) string {
+	if m := os.Getenv("CREW_" + strings.ToUpper(role) + "_PERMISSION_MODE"); m != "" {
+		return m
+	}
+	return Roles[role]
 }
 
 // Agent statuses.
@@ -187,7 +197,8 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 	if o.Role == "" {
 		o.Role = "worker"
 	}
-	mode, ok := Roles[o.Role]
+	_, ok := Roles[o.Role]
+	mode := permissionMode(o.Role)
 	if !ok {
 		return nil, fmt.Errorf("unknown role %q", o.Role)
 	}

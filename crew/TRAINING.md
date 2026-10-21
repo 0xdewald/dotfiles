@@ -217,7 +217,7 @@ started Sneaky Sprockets in /Users/you/agents/slot-one/my-service on agent/PROJ-
 What just happened:
 1. crew picked a free slot (or use `--slot slot-two` to choose one),
 2. created and checked out `agent/PROJ-123` in that slot, locked so no other slot can take the same branch,
-3. started a background Claude there, named "Sneaky Sprockets", allowed to edit files, with your prompt as its first message,
+3. started a background Claude there, named "Sneaky Sprockets", with your prompt as its first message. Workers run in **auto mode**: routine actions (reading the ticket, editing, running tests, committing) go ahead without asking, and anything risky still asks. When an agent asks, it shows as `needs-input` and you get a notification; open it (step 9) to answer. To use a different mode, add e.g. `CREW_WORKER_PERMISSION_MODE=acceptEdits` to `~/.config/crew/env`.
 4. moved the item to `coding`.
 
 Useful options:
@@ -320,7 +320,11 @@ From Neovim: in the dashboard (`Space m m`), select the agent and press `Ctrl-s`
 nvim
 ```
 
-Press `Space m m`, move to the agent, and press **Enter**. Neovim then:
+Press `Space m m`, move to the agent, and press **Enter**.
+
+**If the agent is busy or waiting for permission** (`working` or `needs-input`), Neovim opens a **live view** of its background session in the Claude split, in its folder's tab. It keeps running in the background: you watch it, answer its permission prompt, or type to it, and closing the view (or `Space m b`, or quitting Neovim) just stops watching.
+
+**If it's idle, stale or stopped**, Neovim takes it over:
 1. stops the agent's background session (its conversation is kept),
 2. opens a new tab in the agent's slot folder,
 3. resumes the same conversation in the Claude split on the right, connected to Neovim like your normal Claude,

@@ -95,9 +95,9 @@ func fileContains(path, needle string) bool {
 // else starting it fresh, with text as the next prompt (may be empty). Returns the session id
 // and short background id once Claude confirms the session is running.
 func (b *Board) runBackground(a *Agent, text string) (string, string, error) {
-	args := startArgs(a.Name, Roles[a.Role], a.Model, text)
+	args := startArgs(a.Name, permissionMode(a.Role), a.Model, text)
 	if sid, ok := b.ConversationID(a); ok {
-		args = []string{"--bg", "--resume", sid}
+		args = []string{"--bg", "--resume", sid, "--permission-mode", permissionMode(a.Role)}
 		if text != "" {
 			args = append(args, text)
 		}

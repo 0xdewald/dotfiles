@@ -51,6 +51,15 @@ local handing_off = false
 function M.background()
   local a = attached()
   if not a then return notify("no crew agent is open here (Space mm to open one)", vim.log.levels.WARN) end
+  if a.viewing then
+    -- only watching its background session: stop watching, it keeps running there
+    handing_off = true
+    if require("agent").claude_buf() then require("agent").stop() end
+    vim.g.claude_agent = nil
+    handing_off = false
+    M.run({ "agent", "attach-mark", tostring(a.id), "off" })
+    return notify(a.name .. " keeps running in the background")
+  end
   local now = M.run({ "agent", "show", tostring(a.id) }) or a
   local mid_turn = now.status == "working" or now.status == "needs-input"
   handing_off = true
@@ -109,6 +118,18 @@ function M.open(a)
   end
   if attached() then M.background() end -- another agent was open here
   agent.stop()
+  -- Busy or waiting for permission in the background: watch it live there instead of taking it
+  -- over, which would interrupt its turn (and cancel a permission prompt it's waiting on)
+  if (a.status == "working" or a.status == "needs-input") and a.bg_id and a.bg_id ~= "" then
+    if not goto_tab(a.dir) then
+      vim.cmd("tabnew")
+      vim.cmd.tcd(vim.fn.fnameescape(a.dir))
+    end
+    M.run({ "agent", "attach-mark", tostring(a.id), "on" })
+    agent.view(a.bg_id, { track = false, env = agent_env(a), agent = vim.tbl_extend("force", a, { viewing = true }), name = a.name })
+    return notify(("watching %s live (%s): it keeps running in the background%s"):format(a.name, a.status,
+      a.status == "needs-input" and " · it's waiting for your answer" or ""))
+  end
   -- the session may still be running in the background; stop it there before resuming it here
   if a.bg_id and a.bg_id ~= "" then
     vim.system({ vim.env.CREW_CLAUDE or "claude", "stop", a.bg_id }):wait()

@@ -175,7 +175,7 @@ func TestAgentStart(t *testing.T) {
 		t.Fatalf("calls = %d", len(calls))
 	}
 	c := calls[0]
-	want := []string{"--bg", "-n", a.Name, "--permission-mode", "acceptEdits"}
+	want := []string{"--bg", "-n", a.Name, "--permission-mode", "auto"}
 	if !slices.Equal(c.Args, want) {
 		t.Fatalf("args = %q, want %q", c.Args, want)
 	}
@@ -301,7 +301,7 @@ func TestHookStopDelivers(t *testing.T) {
 	if !slices.Equal(calls[1].Args, []string{"stop", a.SessionID[:8]}) {
 		t.Fatalf("stop first: %q", calls[1].Args)
 	}
-	if !slices.Equal(calls[2].Args, []string{"--bg", "--resume", a.SessionID, "also fix Y"}) {
+	if !slices.Equal(calls[2].Args, []string{"--bg", "--resume", a.SessionID, "--permission-mode", "auto", "also fix Y"}) {
 		t.Fatalf("resume: %q", calls[2].Args)
 	}
 	if calls[2].Env["CREW_AGENT_ID"] != fmt.Sprint(a.ID) {
@@ -363,7 +363,7 @@ func TestStoppedAgentResumes(t *testing.T) {
 		t.Fatal(err, m)
 	}
 	c := f.Calls(t)
-	if last := c[len(c)-1].Args; last[1] != "--resume" || last[3] != "wake up" {
+	if last := c[len(c)-1].Args; last[1] != "--resume" || last[len(last)-1] != "wake up" {
 		t.Fatalf("%q", last)
 	}
 	a, _ = b.AgentByID(a.ID)
@@ -400,7 +400,8 @@ func TestComments(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := f.Calls(t)
-	prompt := c[len(c)-1].Args[3]
+	args := c[len(c)-1].Args
+	prompt := args[len(args)-1]
 	if !strings.Contains(prompt, "`src/a.ts:3-4`") || !strings.Contains(prompt, "const b = 2") {
 		t.Fatalf("prompt: %s", prompt)
 	}
@@ -577,7 +578,7 @@ func TestBackgroundAfterNeovim(t *testing.T) {
 	}
 	calls := f.Calls(t)
 	last := calls[len(calls)-1].Args
-	if !slices.Equal(last[:3], []string{"--bg", "--resume", a.SessionID}) || !strings.Contains(last[3], "also add a test") {
+	if !slices.Equal(last[:3], []string{"--bg", "--resume", a.SessionID}) || !strings.Contains(last[len(last)-1], "also add a test") {
 		t.Fatalf("resume args = %q", last)
 	}
 	if a.Attached || a.Status != StatusWorking || a.Pending != 0 {
@@ -672,7 +673,7 @@ func TestResumesConversationByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := f.Calls(t)[len(f.Calls(t))-1].Args
-	if !slices.Equal(last, []string{"--bg", "--resume", real, "go ahead"}) {
+	if !slices.Equal(last, []string{"--bg", "--resume", real, "--permission-mode", "auto", "go ahead"}) {
 		t.Fatalf("resumed %q, want the named conversation", last)
 	}
 }
@@ -692,5 +693,17 @@ func TestBackgroundFailureIsReported(t *testing.T) {
 	m, _ := b.PostMessage(PostOpts{To: a.Name, Text: "hello"})
 	if m.Status != "pending" {
 		t.Fatalf("message to a failed resume marked %s", m.Status)
+	}
+}
+
+func TestWorkerPermissionModeOverride(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	t.Setenv("CREW_WORKER_PERMISSION_MODE", "acceptEdits")
+	if _, err := b.StartAgent(StartOpts{ItemID: it.ID}); err != nil {
+		t.Fatal(err)
+	}
+	args := f.Calls(t)[0].Args
+	if !slices.Contains(args, "acceptEdits") {
+		t.Fatalf("args = %q", args)
 	}
 }

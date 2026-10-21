@@ -120,6 +120,13 @@ function M.start(id, opts)
   require("claudecode.terminal").open({}, args)
 end
 
+-- Show a background session live in the Claude split (`claude attach`): it keeps running there,
+-- and closing this view leaves it running. opts as for M.start.
+function M.view(bg_id, opts)
+  prepare(opts or {})
+  require("claudecode.terminal").open({}, "attach " .. bg_id)
+end
+
 function M.stop()
   local buf = claude_buf()
   if not buf then return end
