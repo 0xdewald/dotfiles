@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTransitions(t *testing.T) {
@@ -536,5 +537,25 @@ func TestHookFollowsNewSession(t *testing.T) {
 	}
 	if a, _ = b.AgentByID(a.ID); a.SessionID != "11111111-2222-3333-4444-555555555555" {
 		t.Fatalf("session = %s", a.SessionID)
+	}
+}
+
+// The final message lands in the transcript just after the Stop hook starts
+func TestStopWaitsForFinalMessage(t *testing.T) {
+	b, _, _, _, _, it := startSetup(t)
+	a, err := b.StartAgent(StartOpts{ItemID: it.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := writeTranscript(t, "Ticket read; now checking the code.")
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		f, _ := os.OpenFile(tr, os.O_APPEND|os.O_WRONLY, 0)
+		f.WriteString(`{"type":"assistant","message":{"content":[{"type":"text","text":"Here's the plan."}]}}` + "\n")
+		f.Close()
+	}()
+	hook(t, b, "Stop", a.SessionID, tr)
+	if a, _ = b.AgentByID(a.ID); a.LastMessage != "Here's the plan." {
+		t.Fatalf("last message = %q, want the final one", a.LastMessage)
 	}
 }

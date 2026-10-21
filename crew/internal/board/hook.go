@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // HookPayload is the common shape of a Claude Code hook's stdin JSON.
@@ -16,7 +17,8 @@ type HookPayload struct {
 	SessionID      string `json:"session_id"`
 	TranscriptPath string `json:"transcript_path"`
 	Cwd            string `json:"cwd"`
-	Message        string `json:"message"` // Notification
+	Message        string `json:"message"`                // Notification
+	LastAssistant  string `json:"last_assistant_message"` // Stop, in Claude Code versions that send it
 }
 
 // HandleHook applies a hook payload. It returns false (and no error) when the
@@ -52,7 +54,9 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 		err = b.setStatus(a.ID, StatusWorking, nil)
 	case "Stop":
 		last := a.LastMessage
-		if t, terr := LastAssistantText(p.TranscriptPath); terr == nil && t != "" {
+		if p.LastAssistant != "" {
+			last = p.LastAssistant
+		} else if t, terr := settledLastText(p.TranscriptPath); terr == nil && t != "" {
 			last = t
 		}
 		if err = b.setStatus(a.ID, StatusIdle, &last); err != nil {
@@ -99,6 +103,25 @@ func (b *Board) followSession(sid string) (*Agent, error) {
 	}
 	b.Event("agent.session", &id, a.ItemID, map[string]any{"from": a.SessionID, "to": sid})
 	return b.AgentByID(id)
+}
+
+// settledLastText reads the last assistant text once the transcript stops growing. Claude runs
+// the Stop hook a moment before it finishes writing the turn's final message to the file.
+func settledLastText(path string) (string, error) {
+	size, stable := int64(-1), 0
+	for i := 0; i < 30 && stable < 3; i++ { // unchanged for 300ms, at most ~3s
+		st, err := os.Stat(path)
+		if err != nil {
+			return "", err
+		}
+		if st.Size() == size {
+			stable++
+		} else {
+			size, stable = st.Size(), 0
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return LastAssistantText(path)
 }
 
 // LastAssistantText returns the text of the last assistant message in a
