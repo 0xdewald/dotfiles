@@ -53,9 +53,9 @@ Your open files and splits are saved when you quit. `Space q s` restores them fo
 
 ## 4. Work with Claude
 
-When you open a folder or a workspace, Claude starts by itself on the right, connected to Neovim, so it sees the file you're in and what you've selected. Each folder or workspace has its own conversation: quit Neovim and come back later, and Claude carries on where you left off.
+Press `Space a c` to open Claude on the right, connected to Neovim, so it sees the file you're in and what you've selected. Each folder or workspace has its own conversation: quit Neovim and come back later, press `Space a c`, and Claude carries on where you left off.
 
-- `Space a c` shows or hides Claude. If you opened a single file, this is how you start it.
+- `Space a c` shows or hides Claude, and starts it the first time.
 - `Space a n` starts a fresh conversation. The old one is kept.
 - `Space a l` lists this folder's conversations with a preview. Enter switches to one.
 
@@ -132,7 +132,7 @@ nvim main.go
 - **Stuck in a terminal, keys don't move you out:** press `Ctrl-\` then `Ctrl-n`, then `Ctrl-h/j/k/l`.
 - **`Space r v` shows everything since the last commit, not just Claude's last turn:** the hook isn't running. Check that `cat .git/claude-baseline` prints a commit hash. If not, run `./install.sh hooks` in `~/dotfiles`, then restart Claude with `Space a n` (hooks only apply to Claude sessions started after they're installed).
 - **Claude starts a new conversation instead of resuming:** check that `./install.sh hooks` says "Hooks already registered". Without the `SessionStart` hook, resuming still works, but not after `/clear`.
-- **Don't want Claude to start by itself:** add `vim.g.agent_autostart = false` to `nvim/init.lua`.
+- **Want Claude to start by itself** when you open a folder or workspace: add `vim.g.agent_autostart = true` to `nvim/init.lua`.
 - **`Space r s` does nothing:** Claude isn't open. Press `Space a c` first.
 - **Comments stay after sending:** that's expected. Resolve them (`Space r r`) or close the review (`Space r n`).
 - **Old comments gone, or a comment can't be sent:** you probably closed the review. `Space r R` and Enter brings it back.

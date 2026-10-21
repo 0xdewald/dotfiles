@@ -232,13 +232,14 @@ function M.list()
   })
 end
 
--- Start Claude with Neovim when it was opened on a folder or a workspace (`nvim`, `nvim .`,
--- `nvp x`), not for single files or git commit messages. Skipped in $HOME and without a UI.
+-- Opt-in (vim.g.agent_autostart = true): start Claude with Neovim when it was opened on a folder
+-- or a workspace (`nvim`, `nvim .`, `nvp x`), not for single files or git commit messages. Skipped
+-- in $HOME and without a UI. Off by default: Space a c starts it when you want it.
 function M.autostart()
   vim.api.nvim_create_autocmd("VimEnter", {
     group = vim.api.nvim_create_augroup("claude_autostart", { clear = true }),
     callback = function()
-      if vim.g.agent_autostart == false or #vim.api.nvim_list_uis() == 0 then return end
+      if vim.g.agent_autostart ~= true or #vim.api.nvim_list_uis() == 0 then return end
       local argc = vim.fn.argc()
       local dir = argc == 1 and vim.fn.isdirectory(vim.fn.argv(0)) == 1 and vim.fn.argv(0)
       if argc > 0 and not dir then return end

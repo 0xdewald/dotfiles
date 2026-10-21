@@ -130,12 +130,12 @@ Open several repos at once, one tab per repo: `nvp <name>`.
 
 Each folder or workspace has its own Claude session, which lives alongside Neovim:
 
-- **Starts with Neovim** when you open a folder (`nvim`, `nvim .`, `nvim ~/some/repo`) or a workspace (`nvp x`). Opening a single file (`nvim notes.txt`, git commit messages) or starting in your home folder doesn't start Claude; `Space ac` does when you want it.
+- **You start it:** `Space ac` opens Claude for this folder or workspace, resuming its conversation if it has one. Neovim doesn't start Claude by itself, so opening Neovim to review a crew agent or edit a file doesn't spin one up.
 - **Resumes next time.** Claude exits when Neovim does, but the conversation is kept, and the next Neovim in that folder or workspace picks it up again. This keeps working after `/clear` inside Claude, thanks to the `SessionStart` hook (`bin/claude-session`).
 - `Space an` starts a fresh session. The old one stays available.
 - `Space al` lists this folder's sessions, newest first, with a preview of the conversation. Enter switches to one, `Ctrl-n` starts a new one, `Ctrl-x` deletes one (asks first).
 - The Claude window stays where it is: if a file would open in it (for example from the explorer when no editor window is open), Claude stays and the file opens beside it. Its width is kept at 35%.
-- Set `vim.g.agent_autostart = false` to turn auto-start off.
+- Want Claude to start with Neovim when you open a folder or workspace (not for single files, git commit messages or your home folder)? Add `vim.g.agent_autostart = true` to `nvim/init.lua`, above the `require("agent")` lines.
 
 In a workspace there's one Claude, named after the workspace, running in the first tab's repo.
 
