@@ -107,7 +107,7 @@ func TestAgentFlowCLI(t *testing.T) {
 		Status    string `json:"status"`
 	}
 	mustJSON(t, &a, "", "agent", "start", "1")
-	if a.BgID != "bg42" || a.Branch != "agent/VD-1" || a.Status != "starting" {
+	if a.BgID != a.SessionID[:8] || a.Branch != "agent/VD-1" || a.Status != "starting" {
 		t.Fatalf("%+v", a)
 	}
 	var byBranch struct {
@@ -152,7 +152,7 @@ func TestAgentFlowCLI(t *testing.T) {
 		t.Fatalf("%+v", cs)
 	}
 	calls, _ := os.ReadFile(filepath.Join(root, "calls"))
-	if !strings.Contains(string(calls), "stop bg42") || !strings.Contains(string(calls), "--bg --resume "+a.SessionID+" I reviewed your changes") {
+	if !strings.Contains(string(calls), "stop "+a.SessionID[:8]) || !strings.Contains(string(calls), "--bg --resume "+a.SessionID+" I reviewed your changes") {
 		t.Fatalf("calls:\n%s", calls)
 	}
 }

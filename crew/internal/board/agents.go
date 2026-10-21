@@ -249,7 +249,7 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 	if prompt != "" {
 		args = append(args, prompt)
 	}
-	out, err := b.Exec.Claude(dir, b.agentEnv(a), args...)
+	_, err = b.Exec.Claude(dir, b.agentEnv(a), args...)
 	if err != nil {
 		b.DB.Exec(`UPDATE agents SET status = ?, updated = ? WHERE id = ?`, StatusStopped, b.now(), aid)
 		b.DB.Exec(`UPDATE messages SET to_agent_id = NULL WHERE to_agent_id = ? AND status = 'pending'`, aid)
@@ -258,7 +258,7 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 		b.Event("agent.error", &aid, &item.ID, map[string]any{"error": err.Error()})
 		return nil, err
 	}
-	bg := parseBgID(out)
+	bg := bgID(a.SessionID)
 
 	tx, err = b.DB.Begin()
 	if err != nil {

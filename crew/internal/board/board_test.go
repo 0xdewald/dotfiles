@@ -166,7 +166,7 @@ func TestAgentStart(t *testing.T) {
 	if got := git(t, clones[1], "rev-parse", "--abbrev-ref", "HEAD"); got != "agent/VD-1" {
 		t.Fatalf("branch = %s", got)
 	}
-	if a.Status != StatusStarting || a.BgID != "bg1" || a.Slot != "s2" || a.Branch != "agent/VD-1" || a.Stage != "coding" {
+	if a.Status != StatusStarting || a.BgID != a.SessionID[:8] || a.Slot != "s2" || a.Branch != "agent/VD-1" || a.Stage != "coding" {
 		t.Fatalf("%+v", a)
 	}
 	it, _ = b.Item(it.ID)
@@ -186,7 +186,7 @@ func TestAgentStart(t *testing.T) {
 	if a.Status != StatusStopped {
 		t.Fatal(a.Status)
 	}
-	if last := f.Calls(t); !slices.Equal(last[len(last)-1].Args, []string{"stop", "bg1"}) {
+	if last := f.Calls(t); !slices.Equal(last[len(last)-1].Args, []string{"stop", a.SessionID[:8]}) {
 		t.Fatalf("stop args = %q", last[len(last)-1].Args)
 	}
 	s, _ := b.Slot("s2")
@@ -270,7 +270,7 @@ func TestHookStopDelivers(t *testing.T) {
 	if len(calls) != 3 {
 		t.Fatalf("calls = %d", len(calls))
 	}
-	if !slices.Equal(calls[1].Args, []string{"stop", "bg1"}) {
+	if !slices.Equal(calls[1].Args, []string{"stop", a.SessionID[:8]}) {
 		t.Fatalf("stop first: %q", calls[1].Args)
 	}
 	if !slices.Equal(calls[2].Args, []string{"--bg", "--resume", a.SessionID, "also fix Y"}) {
@@ -282,7 +282,7 @@ func TestHookStopDelivers(t *testing.T) {
 	if m, _ = b.Message(m.ID); m.Status != "delivered" || m.Delivered == "" {
 		t.Fatalf("%+v", m)
 	}
-	if a.Status != StatusWorking || a.BgID != "bg3" {
+	if a.Status != StatusWorking || a.BgID != a.SessionID[:8] {
 		t.Fatalf("%+v", a)
 	}
 	if len(r.notified) != 0 {
@@ -429,17 +429,8 @@ func TestDocuments(t *testing.T) {
 	}
 }
 
-func TestParseBgID(t *testing.T) {
-	for in, want := range map[string]string{
-		"":                                     "",
-		"a1b2c3\n":                             "a1b2c3",
-		"Started background session · id: bg3": "bg3",
-		"Session started: 4f2a9c (Fuzzy Muffins)": "4f2a9c",
-		"ok":                    "",
-		"Running in background": "",
-	} {
-		if got := parseBgID(in); got != want {
-			t.Errorf("%q: got %q want %q", in, got, want)
-		}
+func TestBgID(t *testing.T) {
+	if got := bgID("8798868b-f0d7-4c3c-bbb5-9eed9a2c927c"); got != "8798868b" {
+		t.Errorf("got %q", got)
 	}
 }

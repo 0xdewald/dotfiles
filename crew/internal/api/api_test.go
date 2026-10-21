@@ -53,7 +53,7 @@ func TestByBranch(t *testing.T) {
 	var got board.Agent
 	json.NewDecoder(resp.Body).Decode(&got)
 	resp.Body.Close()
-	if resp.StatusCode != 200 || got.ID != a.ID || got.SessionID != a.SessionID || got.Branch != "agent/VD-9" || got.BgID != "abc123" {
+	if resp.StatusCode != 200 || got.ID != a.ID || got.SessionID != a.SessionID || got.Branch != "agent/VD-9" || got.BgID != a.SessionID[:8] {
 		t.Fatalf("%d %+v", resp.StatusCode, got)
 	}
 	resp, _ = http.Get(srv.URL + "/api/agents/by-branch?branch=nope")

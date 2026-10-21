@@ -235,7 +235,7 @@ func (b *Board) deliver(id int64) (int, error) {
 	if a.BgID != "" {
 		b.Exec.Claude(a.Dir, b.agentEnv(a), "stop", a.BgID) // best effort: it may already be gone
 	}
-	out, err := b.Exec.Claude(a.Dir, b.agentEnv(a), "--bg", "--resume", a.SessionID, combine(msgs))
+	_, err = b.Exec.Claude(a.Dir, b.agentEnv(a), "--bg", "--resume", a.SessionID, combine(msgs))
 	if err != nil {
 		return fail(err)
 	}
@@ -244,7 +244,7 @@ func (b *Board) deliver(id int64) (int, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE agents SET bg_id = ?, updated = ? WHERE id = ?`, parseBgID(out), b.now(), id); err != nil {
+	if _, err := tx.Exec(`UPDATE agents SET bg_id = ?, updated = ? WHERE id = ?`, bgID(a.SessionID), b.now(), id); err != nil {
 		return 0, err
 	}
 	if err := b.markDelivered(tx, msgs); err != nil {

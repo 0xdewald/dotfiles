@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"strings"
 )
 
@@ -70,33 +69,12 @@ func appleQuote(s string) string {
 	return `"` + s + `"`
 }
 
-var (
-	bgIDLabeled = regexp.MustCompile(`(?i)\b(?:id|session|agent)\b[^A-Za-z0-9]{0,3}([A-Za-z0-9][A-Za-z0-9_-]{2,})`)
-	bgIDToken   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{2,}$`)
-)
-
-// parseBgID pulls a background session id out of `claude --bg` output.
-// The format isn't documented, so: a lone token, else "id: X"-style, else
-// the last word of the output that looks like an id; "" if nothing fits.
-func parseBgID(out string) string {
-	out = strings.TrimSpace(out)
-	if out == "" {
-		return ""
+// bgID is the short id `claude stop` and `claude attach` take for a background session: the
+// first 8 characters of its session id (what `claude agents` lists). crew picks the session id
+// itself, so this doesn't depend on parsing `claude --bg` output.
+func bgID(sessionID string) string {
+	if len(sessionID) < 8 {
+		return sessionID
 	}
-	if bgIDToken.MatchString(out) && strings.ContainsAny(out, "0123456789") {
-		return out
-	}
-	for _, m := range bgIDLabeled.FindAllStringSubmatch(out, -1) {
-		if strings.ContainsAny(m[1], "0123456789") {
-			return m[1]
-		}
-	}
-	f := strings.Fields(out)
-	for i := len(f) - 1; i >= 0; i-- {
-		w := strings.Trim(f[i], ".,:;()[]'\"`")
-		if bgIDToken.MatchString(w) && strings.ContainsAny(w, "0123456789") {
-			return w
-		}
-	}
-	return ""
+	return sessionID[:8]
 }
