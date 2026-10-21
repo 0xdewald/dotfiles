@@ -258,7 +258,8 @@ func (b *Board) MoveItem(id int64, to string, force bool) (*Item, error) {
 
 func (b *Board) moveTx(tx *sql.Tx, id int64, to string, force bool) error {
 	var from string
-	if err := tx.QueryRow(`SELECT stage FROM work_items WHERE id = ?`, id).Scan(&from); err != nil {
+	var agent *int64
+	if err := tx.QueryRow(`SELECT stage, agent_id FROM work_items WHERE id = ?`, id).Scan(&from, &agent); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("item %d: %w", id, ErrNotFound)
 		}
@@ -277,5 +278,5 @@ func (b *Board) moveTx(tx *sql.Tx, id int64, to string, force bool) error {
 	if _, err := tx.Exec(`UPDATE work_items SET stage = ?, rounds = rounds + ?, updated = ? WHERE id = ?`, to, round, b.now(), id); err != nil {
 		return err
 	}
-	return b.event(tx, "item.move", nil, &id, map[string]any{"from": from, "to": to, "force": force && !CanMove(from, to)})
+	return b.event(tx, "item.move", agent, &id, map[string]any{"from": from, "to": to, "force": force && !CanMove(from, to)})
 }
