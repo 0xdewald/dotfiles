@@ -235,22 +235,9 @@ func (b *Board) deliver(id int64) (int, error) {
 	if a.BgID != "" {
 		b.Exec.Claude(a.Dir, b.agentEnv(a), "stop", a.BgID) // best effort: it may already be gone
 	}
-	out, err := b.Exec.Claude(a.Dir, b.agentEnv(a), "--bg", "--resume", a.SessionID, combine(msgs))
-	if err != nil && strings.Contains(err.Error(), "No conversation found") {
-		// never got a prompt, so there's nothing to resume: start it fresh with the messages
-		out, err = b.Exec.Claude(a.Dir, b.agentEnv(a), startArgs(a.Name, Roles[a.Role], a.Model, combine(msgs))...)
-	}
+	sid, bg, err := b.runBackground(a, combine(msgs))
 	if err != nil {
 		return fail(err)
-	}
-	sid, bg := a.SessionID, parseBackgrounded(out)
-	if bg == "" {
-		return fail(fmt.Errorf("claude --bg: no session id in its output: %s", strings.TrimSpace(out)))
-	}
-	if !strings.HasPrefix(sid, bg) { // claude continued in a copy or a new session
-		if sid, err = b.fullSessionID(a.Dir, bg); err != nil {
-			return fail(err)
-		}
 	}
 	tx, err := b.DB.Begin()
 	if err != nil {

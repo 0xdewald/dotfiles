@@ -45,7 +45,7 @@ const fakeScript = `#!/bin/sh
 d="@DIR@"
 if [ "$1" = "agents" ]; then
   printf '['; sep=''
-  [ -f "$d.bgs" ] && while read id cwd; do printf '%s{"sessionId":"%s-0000-4000-8000-000000000000","cwd":"%s","kind":"background"}' "$sep" "$id" "$cwd"; sep=','; done < "$d.bgs"
+  [ -f "$d.bgs" ] && while read id cwd st; do printf '%s{"sessionId":"%s-0000-4000-8000-000000000000","cwd":"%s","kind":"background","status":%s}' "$sep" "$id" "$cwd" "$st"; sep=','; done < "$d.bgs"
   printf ']\n'; exit 0
 fi
 n=$(ls "$d" | wc -l | tr -d ' ')
@@ -56,7 +56,20 @@ env | grep '^CREW_' | sort > "$d/$n/env"
 pwd -P > "$d/$n/cwd"
 if [ "$1" = "--bg" ]; then
   if [ "$2" = "--resume" ]; then id=$(echo "$3" | cut -c1-8); else id=$(printf '%08x' $((2684354560 + n))); fi
-  echo "$id $(pwd -P)" >> "$d.bgs"
+  # one entry per session id, like claude agents
+  [ -f "$d.bgs" ] && grep -v "^$id " "$d.bgs" > "$d.bgs.tmp"; [ -f "$d.bgs.tmp" ] && mv "$d.bgs.tmp" "$d.bgs"
+  if [ -n "$FAKE_BG_FAIL" ]; then
+    echo "$id $(pwd -P) null" >> "$d.bgs"
+    mkdir -p "$CLAUDE_CONFIG_DIR/jobs/$id"
+    printf '{"state":"failed","detail":"%s"}' "$FAKE_BG_FAIL" > "$CLAUDE_CONFIG_DIR/jobs/$id/state.json"
+  else
+    echo "$id $(pwd -P) \"idle\"" >> "$d.bgs"
+    # like claude: the conversation lives in <config>/projects/<cwd>/<session>.jsonl, named by -n
+    name=""; prev=""; for a in "$@"; do [ "$prev" = "-n" ] && name="$a"; prev="$a"; done
+    p="$CLAUDE_CONFIG_DIR/projects/$(pwd -P | sed 's/[^a-zA-Z0-9]/-/g')"; mkdir -p "$p"
+    f="$p/$id-0000-4000-8000-000000000000.jsonl"
+    [ -f "$f" ] || printf '{"type":"custom-title","customTitle":"%s"}\n' "$name" > "$f"
+  fi
   echo "backgrounded · $id · agent (idle — send a prompt to start)"
 fi
 `
@@ -77,6 +90,7 @@ func newFake(t *testing.T) *Fake {
 		t.Fatal(err)
 	}
 	t.Setenv("CREW_CLAUDE", f.Path)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
 	return f
 }
 

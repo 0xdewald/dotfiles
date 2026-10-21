@@ -34,8 +34,12 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 	a, err := b.AgentBySession(p.SessionID)
 	if errors.Is(err, ErrNotFound) {
 		// A session crew doesn't know yet, started for one of its agents (claude passes its env to
-		// hooks, and crew starts agents with CREW_AGENT_ID): a fresh background start, a resume
-		// that became a copy, /clear, or the agent opened in Neovim. Follow it to the new session.
+		// hooks, and crew starts agents with CREW_AGENT_ID): e.g. /clear, or a fresh session opened
+		// in Neovim. Follow the agent to it only once it's used; a session that merely started has
+		// no conversation, and switching to it would lose the agent's real one.
+		if p.Event == "SessionStart" {
+			return false, nil
+		}
 		a, err = b.followSession(p.SessionID)
 		if errors.Is(err, ErrNotFound) {
 			return false, nil

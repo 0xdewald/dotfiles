@@ -354,9 +354,9 @@ func (a *app) printAgents(as []*board.Agent) {
 }
 
 func (a *app) printAgent(x *board.Agent) {
-	fmt.Fprintf(a.stdout, "%s (#%d, %s)\nstatus   %s%s\nsession  %s  bg %s\nslot     %s %s (ports +%d)\nitem     %s %s %s\npending  %d\n\n%s\n",
+	fmt.Fprintf(a.stdout, "%s (#%d, %s)\nstatus   %s%s\nsession  %s  bg %s\nconversation %s\nslot     %s %s (ports +%d)\nitem     %s %s %s\npending  %d\n\n%s\n",
 		x.Name, x.ID, x.Role, x.Status, map[bool]string{true: " (attached)"}[x.Attached], x.SessionID, orDash(x.BgID),
-		orDash(x.Slot), x.Dir, x.PortOffset, ptrStr(x.ItemID), x.Stage, x.Branch, x.Pending, x.LastMessage)
+		orDash(x.Conversation), orDash(x.Slot), x.Dir, x.PortOffset, ptrStr(x.ItemID), x.Stage, x.Branch, x.Pending, x.LastMessage)
 }
 
 func ptrStr(p *int64) string {
@@ -425,6 +425,7 @@ func (a *app) agent(sub string, args []string) error {
 		if err != nil {
 			return err
 		}
+		ag.Conversation, _ = a.b.ConversationID(ag)
 		return a.out(ag, func() { a.printAgent(ag) })
 	case "stop":
 		pos, err := parse(flag.NewFlagSet("agent stop", flag.ContinueOnError), args, 1)

@@ -74,7 +74,10 @@ local function current_id()
 end
 
 -- Claude keeps each conversation in ~/.claude/projects/<cwd, non-alphanumerics as "-">/<id>.jsonl
-local function project_dir(cwd) return vim.fn.expand("~/.claude/projects/") .. cwd:gsub("[^%w]", "-") end
+local function project_dir(cwd)
+  local home = vim.env.CLAUDE_CONFIG_DIR or vim.fn.expand("~/.claude")
+  return home .. "/projects/" .. (vim.uv.fs_realpath(cwd) or cwd):gsub("[^%w]", "-")
+end
 
 -- Folder of the running Claude; before one is started, the folder it will start in
 local function claude_cwd() return claude_buf() and vim.g.claude_cwd or vim.fn.getcwd() end
@@ -101,12 +104,13 @@ local function prepare(opts)
 end
 
 -- Open Claude on a session: resume it when it exists, otherwise start a new one with that ID.
--- opts (all optional): track = false to leave the folder's saved session alone, env, agent, name.
+-- opts (all optional): track = false to leave the folder's saved session alone, env, agent, name,
+-- resume = true when the caller knows id is an existing conversation (crew does).
 function M.start(id, opts)
   opts = opts or {}
   prepare(opts)
   local args
-  if id and session_exists(id) then
+  if id and (opts.resume or session_exists(id)) then
     args = "--resume " .. id
   else
     id = id or vim.trim(vim.fn.system("uuidgen")):lower()

@@ -93,18 +93,13 @@ local function goto_tab(dir)
   return false
 end
 
--- Claude writes a conversation file once a session gets its first prompt
-local function has_conversation(a)
-  local file = ("%s/.claude/projects/%s/%s.jsonl"):format(vim.env.HOME, (a.dir:gsub("[^%w]", "-")), a.session_id)
-  return vim.uv.fs_stat(file) ~= nil
-end
-
 -- Open an agent: its folder's tab (or a new one), its conversation resumed in the Claude split.
 -- The board marks it attached, so new messages come here instead of resuming it in the background.
 function M.open(a)
   if not (a.dir and a.dir ~= "" and vim.fn.isdirectory(a.dir) == 1) then
     return notify(a.name .. " has no folder on this machine", vim.log.levels.WARN)
   end
+  a = M.run({ "agent", "show", tostring(a.id) }) or a -- current state, including its conversation
   local agent = require("agent")
   -- already open here: just go to it
   if attached() and attached().id == a.id and agent.claude_buf() then
@@ -124,10 +119,10 @@ function M.open(a)
   end
   local ok, err = M.run({ "agent", "attach-mark", tostring(a.id), "on" })
   if not ok and err then return notify(err, vim.log.levels.ERROR) end
-  -- An agent that never got a prompt has nothing to resume: start a fresh session. Its
-  -- SessionStart hook tells the board the new id (crew follows CREW_AGENT_ID).
-  local sid = has_conversation(a) and a.session_id or nil
-  agent.start(sid, { track = false, env = agent_env(a), agent = a, name = a.name })
+  -- Resume the conversation crew says is the agent's. One that never got a prompt has none: start
+  -- a fresh session; the board takes it over once you use it (crew follows CREW_AGENT_ID).
+  local sid = (a.conversation and a.conversation ~= "") and a.conversation or nil
+  agent.start(sid, { track = false, resume = sid ~= nil, env = agent_env(a), agent = a, name = a.name })
   notify(("%s · %s · %s"):format(a.name, a.branch or "?", vim.fn.fnamemodify(a.dir, ":~")))
 end
 

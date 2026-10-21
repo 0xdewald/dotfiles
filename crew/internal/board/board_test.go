@@ -498,9 +498,8 @@ func TestDeliverStartsFreshWithoutConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	hook(t, b, "Stop", a.SessionID, writeTranscript(t, ""))
-	script, _ := os.ReadFile(f.Path)
-	os.WriteFile(f.Path, []byte(strings.Replace(string(script), "n=$(ls",
-		"if [ \"$2\" = \"--resume\" ]; then echo 'No conversation found with session ID' >&2; exit 1; fi\nn=$(ls", 1)), 0o755)
+	// no conversation file for its session, and none named after it
+	os.RemoveAll(filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "projects"))
 	if _, err := b.PostMessage(PostOpts{To: a.Name, Text: "start on the ticket"}); err != nil {
 		t.Fatal(err)
 	}
@@ -515,7 +514,7 @@ func TestDeliverStartsFreshWithoutConversation(t *testing.T) {
 	}
 }
 
-// A session started for an agent (env CREW_AGENT_ID) that crew doesn't know moves the agent to it
+// A new session for an agent (env CREW_AGENT_ID) takes over only once it's used, e.g. after /clear
 func TestHookFollowsNewSession(t *testing.T) {
 	b, _, _, _, _, it := startSetup(t)
 	a, err := b.StartAgent(StartOpts{ItemID: it.ID})
@@ -532,8 +531,14 @@ func TestHookFollowsNewSession(t *testing.T) {
 		t.Fatal("unknown session without CREW_AGENT_ID was handled")
 	}
 	t.Setenv("CREW_AGENT_ID", fmt.Sprint(a.ID))
-	if !hook(t, b, "SessionStart", "11111111-2222-3333-4444-555555555555", "") {
-		t.Fatal("new session for the agent not followed")
+	if hook(t, b, "SessionStart", "11111111-2222-3333-4444-555555555555", "") {
+		t.Fatal("followed a session that only started (it has no conversation yet)")
+	}
+	if a2, _ := b.AgentByID(a.ID); a2.SessionID != a.SessionID {
+		t.Fatal("agent moved off its conversation by a session that merely started")
+	}
+	if !hook(t, b, "UserPromptSubmit", "11111111-2222-3333-4444-555555555555", "") {
+		t.Fatal("new session for the agent not followed once used")
 	}
 	if a, _ = b.AgentByID(a.ID); a.SessionID != "11111111-2222-3333-4444-555555555555" {
 		t.Fatalf("session = %s", a.SessionID)
@@ -648,5 +653,44 @@ func TestRemoveAgents(t *testing.T) {
 	removed, err := b.RemoveAll(false)
 	if err != nil || len(removed) != 1 {
 		t.Fatalf("rm all: %v %d", err, len(removed))
+	}
+}
+
+// The recorded session lost its conversation (e.g. moved to an unused one): resume the newest
+// conversation named after the agent instead of starting over
+func TestResumesConversationByName(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	real := a.SessionID
+	hook(t, b, "Stop", real, writeTranscript(t, "plan written"))
+	b.DB.Exec(`UPDATE agents SET session_id = 'deadbeef-0000-4000-8000-000000000000' WHERE id = ?`, a.ID)
+	a, _ = b.AgentByID(a.ID)
+	if sid, ok := b.ConversationID(a); !ok || sid != real {
+		t.Fatalf("conversation = %q %v, want %s", sid, ok, real)
+	}
+	if _, err := b.Background(a.Name, false, "go ahead"); err != nil {
+		t.Fatal(err)
+	}
+	last := f.Calls(t)[len(f.Calls(t))-1].Args
+	if !slices.Equal(last, []string{"--bg", "--resume", real, "go ahead"}) {
+		t.Fatalf("resumed %q, want the named conversation", last)
+	}
+}
+
+// claude --bg returns before the session runs; one that then fails must not count as working
+func TestBackgroundFailureIsReported(t *testing.T) {
+	b, _, _, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	hook(t, b, "Stop", a.SessionID, writeTranscript(t, "done"))
+	t.Setenv("FAKE_BG_FAIL", "source session not found")
+	if _, err := b.Background(a.Name, false, "go"); err == nil || !strings.Contains(err.Error(), "source session not found") {
+		t.Fatalf("err = %v", err)
+	}
+	if a2, _ := b.AgentByID(a.ID); a2.Status == StatusWorking {
+		t.Fatal("failed background session shown as working")
+	}
+	m, _ := b.PostMessage(PostOpts{To: a.Name, Text: "hello"})
+	if m.Status != "pending" {
+		t.Fatalf("message to a failed resume marked %s", m.Status)
 	}
 }

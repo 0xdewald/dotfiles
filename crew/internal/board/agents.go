@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/0xdewald/dotfiles/crew/internal/names"
 )
@@ -67,6 +68,9 @@ type Agent struct {
 	Pending     int    `json:"pending"`
 	Created     string `json:"created"`
 	Updated     string `json:"updated"`
+	// Conversation is the session holding the agent's conversation ("" if none yet); filled by
+	// `crew agent show` so clients resume the right one.
+	Conversation string `json:"conversation,omitempty"`
 }
 
 const agentSel = `SELECT a.id, a.name, a.role, a.model, a.session_id, a.bg_id, a.slot_id, COALESCE(s.name,''),
@@ -259,12 +263,13 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 	}
 	args := startArgs(name, mode, o.Model, prompt)
 	var out string
+	launched := time.Now()
 	out, err = b.Exec.Claude(dir, b.agentEnv(a), args...)
 	var bg string
 	if err == nil {
 		if bg = parseBackgrounded(out); bg == "" {
 			err = fmt.Errorf("claude --bg: no session id in its output: %s", strings.TrimSpace(out))
-		} else if sid, err = b.fullSessionID(dir, bg); err != nil {
+		} else if sid, err = b.awaitBackground(dir, bg, launched); err != nil {
 			b.Exec.Claude(dir, nil, "stop", bg)
 		}
 	}

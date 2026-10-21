@@ -52,27 +52,9 @@ func (b *Board) Background(ref string, cont bool, prompt string) (*Agent, error)
 	if a.BgID != "" {
 		b.Exec.Claude(a.Dir, b.agentEnv(a), "stop", a.BgID) // best effort: make sure only one copy runs
 	}
-	args := []string{"--bg", "--resume", a.SessionID}
-	if text != "" {
-		args = append(args, text)
-	}
-	out, err := b.Exec.Claude(a.Dir, b.agentEnv(a), args...)
-	if err != nil && strings.Contains(err.Error(), "No conversation found") {
-		// never got a prompt: nothing to resume, so start it fresh
-		out, err = b.Exec.Claude(a.Dir, b.agentEnv(a), startArgs(a.Name, Roles[a.Role], a.Model, text)...)
-	}
+	sid, bg, err := b.runBackground(a, text)
 	if err != nil {
 		return nil, err
-	}
-	bg := parseBackgrounded(out)
-	if bg == "" {
-		return nil, fmt.Errorf("claude --bg: no session id in its output: %s", strings.TrimSpace(out))
-	}
-	sid := a.SessionID
-	if !strings.HasPrefix(sid, bg) {
-		if sid, err = b.fullSessionID(a.Dir, bg); err != nil {
-			return nil, err
-		}
 	}
 	status := StatusIdle
 	if text != "" {

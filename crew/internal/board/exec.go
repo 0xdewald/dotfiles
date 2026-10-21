@@ -2,13 +2,11 @@ package board
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
-	"time"
 )
 
 // Exec is everything the board runs outside the DB. Tests may swap parts.
@@ -81,25 +79,4 @@ func parseBackgrounded(out string) string {
 		return m[1]
 	}
 	return ""
-}
-
-// fullSessionID looks up the full session id for a background short id in `claude agents --json`.
-func (b *Board) fullSessionID(dir, short string) (string, error) {
-	for try := 0; try < 10; try++ {
-		out, err := b.Exec.Claude(dir, nil, "agents", "--json", "--all")
-		if err == nil {
-			var list []struct {
-				SessionID string `json:"sessionId"`
-			}
-			if json.Unmarshal([]byte(out), &list) == nil {
-				for _, s := range list {
-					if strings.HasPrefix(s.SessionID, short) {
-						return s.SessionID, nil
-					}
-				}
-			}
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	return "", fmt.Errorf("claude agents doesn't list background session %s", short)
 }

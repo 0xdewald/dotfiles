@@ -30,7 +30,7 @@ func TestReportDone(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
 	root := t.TempDir()
 	fake := filepath.Join(root, "claude")
-	os.WriteFile(fake, []byte("#!/bin/sh\nif [ \"$1\" = agents ]; then echo '[{\"sessionId\":\"abc12345-0000-4000-8000-000000000000\",\"kind\":\"background\"}]'; exit 0; fi\necho \"backgrounded · abc12345 · agent\"\n"), 0o755)
+	os.WriteFile(fake, []byte("#!/bin/sh\nif [ \"$1\" = agents ]; then echo '[{\"sessionId\":\"abc12345-0000-4000-8000-000000000000\",\"kind\":\"background\",\"status\":\"idle\"}]'; exit 0; fi\necho \"backgrounded · abc12345 · agent\"\n"), 0o755)
 	t.Setenv("CREW_CLAUDE", fake)
 	origin, clone := filepath.Join(root, "origin.git"), filepath.Join(root, "slot")
 	git(t, root, "init", "--bare", "-b", "main", origin)

@@ -22,7 +22,8 @@ func env(t *testing.T) string {
 		os.Unsetenv(k)
 	}
 	fake := filepath.Join(root, "claude")
-	os.WriteFile(fake, []byte("#!/bin/sh\nif [ \"$1\" = agents ]; then echo '[{\"sessionId\":\"abc12345-0000-4000-8000-000000000000\",\"kind\":\"background\"}]'; exit 0; fi\necho \"$@\" >> \""+root+"/calls\"\necho \"backgrounded · abc12345 · agent\"\n"), 0o755)
+	os.WriteFile(fake, []byte("#!/bin/sh\nif [ \"$1\" = agents ]; then echo '[{\"sessionId\":\"abc12345-0000-4000-8000-000000000000\",\"kind\":\"background\",\"status\":\"idle\"}]'; exit 0; fi\necho \"$@\" >> \""+root+"/calls\"\np=\"$CLAUDE_CONFIG_DIR/projects/$(pwd -P | sed 's/[^a-zA-Z0-9]/-/g')\"; mkdir -p \"$p\"; touch \"$p/abc12345-0000-4000-8000-000000000000.jsonl\"\necho \"backgrounded · abc12345 · agent\"\n"), 0o755)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
 	t.Setenv("CREW_CLAUDE", fake)
 	return root
 }
