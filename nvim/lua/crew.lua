@@ -48,10 +48,19 @@ local function attached() return vim.g.claude_agent end
 -- (continuing where it left off if it was mid-turn). Space mb does this; so do quitting Neovim,
 -- closing the agent's Claude split and opening another agent, so its work never stops with Neovim.
 local handing_off = false
+local peek_win, peek_close -- the peek float (M.peek) and how to close it without touching the agent
 local agent_term_buf -- the Claude side panel's terminal for the agent taken over here
 function M.background()
   local a = attached()
-  if not a then return notify("no crew agent is open here (Space mm to open one)", vim.log.levels.WARN) end
+  if not a then
+    -- a peeked agent already runs in the background: just close the peek
+    if peek_win and peek_win:valid() then
+      local name = vim.b[peek_win.buf].crew_agent_name
+      peek_close()
+      return notify(name .. " keeps running in the background")
+    end
+    return notify("no crew agent is open here (Space mm to open one)", vim.log.levels.WARN)
+  end
   if a.viewing then
     -- only watching its background session: stop watching, it keeps running there
     handing_off = true
@@ -197,12 +206,11 @@ local function conversation_lines(a)
   return #lines > 0 and lines or { "(no conversation yet)" }
 end
 
-local peek_win
 function M.peek(a)
   a = M.run({ "agent", "show", tostring(a.id) }) or a
   if peek_win and peek_win:valid() then peek_win:close() end
   local live = a.bg_id and a.bg_id ~= "" and a.status ~= "stale" and a.status ~= "stopped"
-  local win
+  local win, close
   if live then
     win = Snacks.terminal.open({ vim.env.CREW_CLAUDE or "claude", "attach", a.bg_id }, {
       cwd = a.dir, interactive = true,
@@ -211,7 +219,7 @@ function M.peek(a)
     win:on("BufLeave", function() end) -- keep snacks' default terminal keys
     -- Close without sending Claude a key: Esc would interrupt the agent's turn (snacks' "Esc Esc
     -- for normal mode" passes the first Esc through to Claude)
-    local function close()
+    close = function()
       pcall(vim.fn.jobstop, vim.b[win.buf].terminal_job_id) -- ends the viewer, not the agent
       win:close()
     end
@@ -236,6 +244,8 @@ function M.peek(a)
     vim.schedule(function() if win:valid() then vim.api.nvim_win_set_cursor(win.win, { vim.api.nvim_buf_line_count(win.buf), 0 }) end end)
   end
   peek_win = win
+  peek_close = close or function() win:close() end
+  vim.b[win.buf].crew_agent_name = a.name
   -- keep the status in the border current while it's open
   local timer = vim.uv.new_timer()
   timer:start(3000, 3000, vim.schedule_wrap(function()

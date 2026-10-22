@@ -560,7 +560,7 @@ crew event ls | tail
 # Neovim
 Space m m   dashboard (Enter peek · Ctrl-t take over · Ctrl-s message · Ctrl-d decisions · Ctrl-r revive · Ctrl-x stop)
 Space m d   answer agents' decisions (Enter: recommendation, another option, or your own)
-Space m b   send the open agent back to the background (quitting Neovim does this too)
+Space m b   send the open agent back to the background (quitting Neovim does this too); closes a peek
 Space r v / r V / r N   diff last turn / uncommitted / commit range
 Space r c / r s         comment / send
 ```
