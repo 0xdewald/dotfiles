@@ -10,6 +10,7 @@ type Status struct {
 	Stages map[string]int `json:"stages"`
 	Agents []*Agent       `json:"agents"`
 	Slots  []*Slot        `json:"slots"`
+	Server any            `json:"server,omitempty"` // set by the CLI: whether crew serve is running
 }
 
 func (b *Board) Status() (*Status, error) {

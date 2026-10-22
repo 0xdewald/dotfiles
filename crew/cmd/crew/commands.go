@@ -28,7 +28,10 @@ func (a *app) status() error {
 	if err != nil {
 		return err
 	}
+	srv := serverState(a.b.Home)
+	s.Server = srv
 	return a.out(s, func() {
+		fmt.Fprintf(a.stdout, "%-13s %s\n", "server", srv)
 		for _, st := range board.Stages {
 			if n := s.Stages[st]; n > 0 {
 				fmt.Fprintf(a.stdout, "%-13s %d\n", st, n)

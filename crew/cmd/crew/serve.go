@@ -4,9 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/0xdewald/dotfiles/crew/internal/api"
@@ -19,13 +21,24 @@ func (a *app) serve(args []string) error {
 	if _, err := parse(fs, args, 0); err != nil {
 		return err
 	}
-	fmt.Fprintln(a.stderr, "crew: serving", a.b.Home, "on http://"+*addr)
+	ln, err := net.Listen("tcp", *addr)
+	if err != nil {
+		return fmt.Errorf("serve: %w (is crew serve already running? see crew status)", err)
+	}
+	if err := writeServerInfo(a.b.Home, ln.Addr().String()); err != nil {
+		return err
+	}
+	defer removeServerInfo(a.b.Home)
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM) // not SIGHUP: nohup must keep it running
+	go func() { <-stop; removeServerInfo(a.b.Home); os.Exit(0) }()
+	fmt.Fprintln(a.stderr, "crew: serving", a.b.Home, "on http://"+ln.Addr().String(), "build", build())
 	go func() { // agents idle for too long go stale
 		for range time.Tick(time.Minute) {
 			a.b.Sweep()
 		}
 	}()
-	return http.ListenAndServe(*addr, api.Handler(a.b))
+	return http.Serve(ln, api.Handler(a.b))
 }
 
 func (a *app) mcp() error {
