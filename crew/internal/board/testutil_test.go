@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -169,4 +170,14 @@ func repoSetup(t *testing.T, n int) (string, []string) {
 		clones = append(clones, c)
 	}
 	return origin, clones
+}
+
+// withCrew is head, then the crew MCP config and role instructions every start and resume
+// carries, then tail.
+func withCrew(b *Board, a *Agent, head []string, tail ...string) []string {
+	out := append(slices.Clone(head), "--mcp-config", b.MCPConfigPath(a.ID))
+	if p := rolePrompt(a); p != "" {
+		out = append(out, "--append-system-prompt", p)
+	}
+	return append(out, tail...)
 }

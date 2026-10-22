@@ -175,7 +175,7 @@ func TestAgentStart(t *testing.T) {
 		t.Fatalf("calls = %d", len(calls))
 	}
 	c := calls[0]
-	want := []string{"--bg", "-n", a.Name, "--permission-mode", "auto"}
+	want := withCrew(b, a, []string{"--bg", "-n", a.Name}, "--permission-mode", "auto")
 	if !slices.Equal(c.Args, want) {
 		t.Fatalf("args = %q, want %q", c.Args, want)
 	}
@@ -301,7 +301,7 @@ func TestHookStopDelivers(t *testing.T) {
 	if !slices.Equal(calls[1].Args, []string{"stop", a.SessionID[:8]}) {
 		t.Fatalf("stop first: %q", calls[1].Args)
 	}
-	if !slices.Equal(calls[2].Args, []string{"--bg", "--resume", a.SessionID, "--permission-mode", "auto", "also fix Y"}) {
+	if !slices.Equal(calls[2].Args, withCrew(b, a, []string{"--bg", "--resume", a.SessionID}, "--permission-mode", "auto", "also fix Y")) {
 		t.Fatalf("resume: %q", calls[2].Args)
 	}
 	if calls[2].Env["CREW_AGENT_ID"] != fmt.Sprint(a.ID) {
@@ -673,7 +673,7 @@ func TestResumesConversationByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := f.Calls(t)[len(f.Calls(t))-1].Args
-	if !slices.Equal(last, []string{"--bg", "--resume", real, "--permission-mode", "auto", "go ahead"}) {
+	if !slices.Equal(last, withCrew(b, a, []string{"--bg", "--resume", real}, "--permission-mode", "auto", "go ahead")) {
 		t.Fatalf("resumed %q, want the named conversation", last)
 	}
 }
@@ -743,6 +743,9 @@ func TestSlotPermissions(t *testing.T) {
 	if !slices.Contains(deny, "Bash(git push --force*)") || !slices.Contains(allow, "Bash(git push origin agent/*)") {
 		t.Fatalf("git rules missing: allow %q deny %q", allow, deny)
 	}
+	if !slices.Contains(allow, "mcp__crew__*") {
+		t.Fatalf("crew's MCP tools not allowed: %q", allow)
+	}
 	if !slices.Contains(allow, "Bash(make test)") || other["model"] != "opus" {
 		t.Fatal("dropped settings that crew didn't write")
 	}
@@ -754,7 +757,7 @@ func TestSlotPermissions(t *testing.T) {
 	if raw, _ := os.ReadFile(dir + "/one/.claude/settings.local.json"); !strings.Contains(string(raw), `"bgIsolation": "none"`) {
 		t.Fatal("worktree isolation not turned off")
 	}
-	if allow, _, _ = read("one"); len(allow) != 3+len(gitAllow) {
+	if allow, _, _ = read("one"); len(allow) != 3+len(gitAllow)+len(mcpAllow) {
 		t.Fatalf("rules duplicated: %q", allow)
 	}
 	if st := git(t, dir+"/one", "status", "--porcelain", "--untracked-files=all"); strings.Contains(st, "settings.local.json") {

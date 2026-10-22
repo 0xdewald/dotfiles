@@ -14,9 +14,10 @@ import (
 	"github.com/0xdewald/dotfiles/crew/internal/names"
 )
 
-// startArgs starts a new background session for an agent.
-func startArgs(name, mode, model, prompt string) []string {
-	args := []string{"--bg", "-n", name, "--permission-mode", mode}
+// startArgs starts a new background session for an agent. crew are the crewArgs, which go before
+// --permission-mode: --mcp-config takes several files, so a flag must follow it, never the prompt.
+func startArgs(name string, crew []string, mode, model, prompt string) []string {
+	args := append(append([]string{"--bg", "-n", name}, crew...), "--permission-mode", mode)
 	if model != "" {
 		args = append(args, "--model", model)
 	}
@@ -76,6 +77,7 @@ type Agent struct {
 	Repo        string `json:"repo"`
 	Branch      string `json:"branch"`
 	Pending     int    `json:"pending"`
+	Decisions   int    `json:"decisions"` // open decisions it's waiting on
 	Created     string `json:"created"`
 	Updated     string `json:"updated"`
 	// Conversation is the session holding the agent's conversation ("" if none yet); filled by
@@ -87,6 +89,7 @@ const agentSel = `SELECT a.id, a.name, a.role, a.model, a.session_id, a.bg_id, a
 	COALESCE(s.path,''), COALESCE(s.port_offset,0), a.dir, a.status, a.attached, a.last_message,
 	w.id, COALESCE(w.stage,''), COALESCE(w.repo,''), COALESCE(w.branch,''),
 	(SELECT COUNT(*) FROM messages m WHERE m.to_agent_id = a.id AND m.status = 'pending'),
+	(SELECT COUNT(*) FROM decisions d WHERE d.agent_id = a.id AND d.status = 'open'),
 	a.created, a.updated
 	FROM agents a LEFT JOIN slots s ON s.id = a.slot_id
 	LEFT JOIN work_items w ON w.id = (SELECT id FROM work_items WHERE agent_id = a.id ORDER BY updated DESC, id DESC LIMIT 1)`
@@ -94,7 +97,7 @@ const agentSel = `SELECT a.id, a.name, a.role, a.model, a.session_id, a.bg_id, a
 func scanAgent(s interface{ Scan(...any) error }) (*Agent, error) {
 	var a Agent
 	err := s.Scan(&a.ID, &a.Name, &a.Role, &a.Model, &a.SessionID, &a.BgID, &a.SlotID, &a.Slot, &a.SlotPath, &a.PortOffset,
-		&a.Dir, &a.Status, &a.Attached, &a.LastMessage, &a.ItemID, &a.Stage, &a.Repo, &a.Branch, &a.Pending, &a.Created, &a.Updated)
+		&a.Dir, &a.Status, &a.Attached, &a.LastMessage, &a.ItemID, &a.Stage, &a.Repo, &a.Branch, &a.Pending, &a.Decisions, &a.Created, &a.Updated)
 	return &a, err
 }
 
@@ -272,7 +275,16 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 	if len(msgs) > 0 {
 		prompt = strings.TrimSpace(prompt + "\n\n" + combine(msgs))
 	}
-	args := startArgs(name, mode, o.Model, prompt)
+	a.Branch = item.Branch // not linked to the item until it runs
+	crew, err := b.crewArgs(a)
+	if err != nil {
+		b.DB.Exec(`UPDATE messages SET to_agent_id = NULL WHERE to_agent_id = ? AND status = 'pending'`, aid)
+		b.DB.Exec(`UPDATE slots SET leased_by = NULL WHERE leased_by = ?`, aid)
+		b.DB.Exec(`DELETE FROM branch_locks WHERE agent_id = ?`, aid)
+		b.DB.Exec(`DELETE FROM agents WHERE id = ?`, aid)
+		return nil, err
+	}
+	args := startArgs(name, crew, mode, o.Model, prompt)
 	var out string
 	launched := time.Now()
 	out, err = b.Exec.Claude(dir, b.agentEnv(a), args...)

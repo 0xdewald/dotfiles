@@ -31,6 +31,10 @@ var gitDeny = []string{
 	"Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push * --force*)", "Bash(git push * -f*)",
 }
 
+// crew's own MCP tools (ask_decision, report_done, …), which every agent gets: no prompt for them,
+// since a background agent has nobody to answer one.
+var mcpAllow = []string{"mcp__crew__*"}
+
 // PermissionsFile is where the rules go, inside each of a slot's repos.
 const PermissionsFile = ".claude/settings.local.json"
 
@@ -63,7 +67,7 @@ func (b *Board) WriteSlotPermissions() ([]string, error) {
 		return nil, err
 	}
 	var crewRule = func(r string) bool { // a rule crew wrote for some slot
-		if slices.Contains(gitAllow, r) || slices.Contains(gitDeny, r) {
+		if slices.Contains(gitAllow, r) || slices.Contains(gitDeny, r) || slices.Contains(mcpAllow, r) {
 			return true
 		}
 		for _, s := range slots {
@@ -77,7 +81,7 @@ func (b *Board) WriteSlotPermissions() ([]string, error) {
 	}
 	var written []string
 	for _, s := range slots {
-		allow := append([]string{pathRule("Read", s.Path), pathRule("Edit", s.Path)}, gitAllow...)
+		allow := append(append([]string{pathRule("Read", s.Path), pathRule("Edit", s.Path)}, gitAllow...), mcpAllow...)
 		deny := slices.Clone(gitDeny)
 		for _, o := range slots {
 			if o.ID != s.ID {

@@ -153,7 +153,8 @@ func TestAgentFlowCLI(t *testing.T) {
 		t.Fatalf("%+v", cs)
 	}
 	calls, _ := os.ReadFile(filepath.Join(root, "calls"))
-	if !strings.Contains(string(calls), "stop "+a.SessionID[:8]) || !strings.Contains(string(calls), "--bg --resume "+a.SessionID+" --permission-mode auto I reviewed your changes") {
+	if !strings.Contains(string(calls), "stop "+a.SessionID[:8]) || !strings.Contains(string(calls), "--bg --resume "+a.SessionID+" --mcp-config ") ||
+		!strings.Contains(string(calls), " --permission-mode auto I reviewed your changes") {
 		t.Fatalf("calls:\n%s", calls)
 	}
 }

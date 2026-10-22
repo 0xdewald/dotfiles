@@ -52,7 +52,7 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 	switch p.Event {
 	case "SessionStart":
 		if a.Status == StatusStarting || a.Status == StatusStopped || a.Status == StatusStale {
-			err = b.setStatus(a.ID, StatusIdle, nil) // ready and waiting for a prompt
+			err = b.setStatus(a.ID, idleStatus(a), nil) // ready and waiting for a prompt (or its decisions)
 		}
 	case "UserPromptSubmit":
 		err = b.setStatus(a.ID, StatusWorking, nil)
@@ -63,7 +63,8 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 		} else if t, terr := settledLastText(p.TranscriptPath); terr == nil && t != "" {
 			last = t
 		}
-		if err = b.setStatus(a.ID, StatusIdle, &last); err != nil {
+		// with decisions open it waits on a human, not for new work
+		if err = b.setStatus(a.ID, idleStatus(a), &last); err != nil {
 			break
 		}
 		data["last_message"] = truncate(last, 500)
@@ -72,7 +73,11 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 			data["deliver_error"] = derr.Error()
 		}
 		data["delivered"] = n
-		if n == 0 {
+		switch {
+		case n > 0:
+		case a.Decisions > 0:
+			b.Exec.Notify("crew: "+a.Name+" has "+decisionsLabel(a.Decisions), b.firstOpenQuestion(a.ID))
+		default:
 			b.Exec.Notify("crew: "+a.Name+" is done", truncate(oneLine(last), 120))
 		}
 	case "Notification":

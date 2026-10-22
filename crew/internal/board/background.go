@@ -56,7 +56,7 @@ func (b *Board) Background(ref string, cont bool, prompt string) (*Agent, error)
 	if err != nil {
 		return nil, err
 	}
-	status := StatusIdle
+	status := idleStatus(a)
 	if text != "" {
 		status = StatusWorking
 	}
@@ -153,6 +153,7 @@ func (b *Board) RemoveAgent(ref string, force bool) (*Agent, error) {
 	defer tx.Rollback()
 	for _, q := range []string{
 		`UPDATE messages SET to_agent_id = NULL WHERE to_agent_id = ? AND status = 'pending'`,
+		`UPDATE decisions SET status = 'cancelled' WHERE agent_id = ? AND status = 'open'`,
 		`UPDATE work_items SET stage = CASE stage WHEN 'coding' THEN 'queued' ELSE stage END, agent_id = NULL WHERE agent_id = ?`,
 		`UPDATE slots SET leased_by = NULL WHERE leased_by = ?`,
 		`DELETE FROM branch_locks WHERE agent_id = ?`,

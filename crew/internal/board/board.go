@@ -154,6 +154,24 @@ var migrations = []string{
 	);`,
 	// which side of a diff a comment was made on: new (the change) or old (before it)
 	`ALTER TABLE comments ADD COLUMN side TEXT NOT NULL DEFAULT 'new';`,
+	// questions agents put on the board instead of asking in chat; message_id is the message that
+	// took the answers back (answers wait until all of an agent's open decisions are answered)
+	`CREATE TABLE decisions (
+		id INTEGER PRIMARY KEY,
+		agent_id INTEGER NOT NULL,
+		item_id INTEGER,
+		question TEXT NOT NULL,
+		options_json TEXT NOT NULL DEFAULT '[]',
+		recommendation TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'open',
+		answer TEXT NOT NULL DEFAULT '',
+		answered_by TEXT NOT NULL DEFAULT '',
+		message_id INTEGER,
+		created TEXT NOT NULL,
+		answered TEXT
+	);
+	CREATE INDEX decisions_agent ON decisions(agent_id, status);`,
 }
 
 func (b *Board) migrate() error {
