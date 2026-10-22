@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -113,4 +115,32 @@ func (s *ServerState) String() string {
 		line += fmt.Sprintf(" · older than this crew (build %s): restart it", build())
 	}
 	return line
+}
+
+// colorOn: color only for a terminal, and never with NO_COLOR set (https://no-color.org)
+func colorOn(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok || os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	st, err := f.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
+}
+
+// colored is String with the state in color: green running, yellow outdated, red not running
+func (s *ServerState) colored(on bool) string {
+	text := s.String()
+	if !on {
+		return text
+	}
+	const green, yellow, red, reset = "\033[32m", "\033[33m", "\033[31m", "\033[0m"
+	switch {
+	case !s.Running:
+		return red + text + reset
+	case s.Outdated:
+		head, tail, _ := strings.Cut(text, " · ")
+		return green + head + reset + " · " + yellow + tail + reset
+	default:
+		return green + text + reset
+	}
 }

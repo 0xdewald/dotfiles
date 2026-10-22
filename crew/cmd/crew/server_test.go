@@ -35,3 +35,17 @@ func TestServerState(t *testing.T) {
 		t.Fatal("leftover record shown as running")
 	}
 }
+
+func TestServerStateColor(t *testing.T) {
+	off := &ServerState{}
+	if c := off.colored(true); !strings.HasPrefix(c, "\033[31m") {
+		t.Fatalf("not running should be red: %q", c)
+	}
+	if c := off.colored(false); strings.Contains(c, "\033[") {
+		t.Fatalf("no color when off: %q", c)
+	}
+	old := &ServerState{Running: true, Addr: "x", Build: "0000000", Outdated: true}
+	if c := old.colored(true); !strings.Contains(c, "\033[32m") || !strings.Contains(c, "\033[33m") {
+		t.Fatalf("outdated should be green + yellow: %q", c)
+	}
+}
