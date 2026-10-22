@@ -54,6 +54,7 @@ func (a *app) decision(sub string, args []string) error {
 	case "answer":
 		fs := flag.NewFlagSet("decision answer", flag.ContinueOnError)
 		accept := fs.Bool("accept", false, "answer with the agent's recommendation")
+		reject := fs.Bool("reject", false, "answer no to the agent's recommendation (TEXT, if given, is the reason)")
 		by := fs.String("by", "", "who answers (default: $CREW_AGENT_ID's name or 'you')")
 		pos, err := parse(fs, args, 1)
 		if err != nil {
@@ -67,14 +68,23 @@ func (a *app) decision(sub string, args []string) error {
 			*by = a.defaultFrom()
 		}
 		var r answered
-		if *accept {
+		switch {
+		case *accept && *reject:
+			return usageError{"decision answer: --accept or --reject, not both"}
+		case *accept:
 			if len(pos) > 1 {
 				return usageError{"decision answer ID TEXT or ID --accept, not both"}
 			}
 			r.Decision, r.Message, err = a.b.AcceptDecision(id, *by)
-		} else {
+		case *reject:
+			reason, terr := a.textArg(pos[1:])
+			if terr != nil {
+				return terr
+			}
+			r.Decision, r.Message, err = a.b.RejectDecision(id, reason, *by)
+		default:
 			if len(pos) < 2 {
-				return usageError{"decision answer ID TEXT|- (or --accept)"}
+				return usageError{"decision answer ID TEXT|- (or --accept, or --reject [REASON])"}
 			}
 			text, terr := a.textArg(pos[1:])
 			if terr != nil {

@@ -113,7 +113,9 @@ Answers to your decisions:
    → --fast
 ```
 
-`crew decision answer` and `cancel` print (`--json`)
+`crew decision answer ID TEXT` answers in your words, `--accept` with the
+agent's recommendation, and `--reject [REASON]` with "Rejected: <recommendation>.
+REASON". `crew decision answer` and `cancel` print (`--json`)
 `{"decision": {...}, "message": {...}|null}`; `message` is set once the
 answers were sent. A decision is `{id, agent_id, agent, item_id, question,
 options[], recommendation, reason, status (open|answered|cancelled), answer,
@@ -127,7 +129,7 @@ number of open ones.
 `add_comment`, `list_comments`, `report_done {summary}`, `ask_decision
 {question, options[], recommendation, reason}` (returns `{id, next}` and tells
 the agent to end its turn), `list_decisions {agent?, status?}` (open by
-default) and `answer_decision {id, answer | accept}` (for the director).
+default) and `answer_decision {id, answer | accept | reject (+ answer as the reason)}` (for the director).
 
 ## HTTP API
 

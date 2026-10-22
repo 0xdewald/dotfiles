@@ -217,8 +217,9 @@ func New(b *board.Board, callerID func() string) *mcp.Server {
 
 	type answerIn struct {
 		ID     int64  `json:"id" jsonschema:"decision id"`
-		Answer string `json:"answer,omitempty" jsonschema:"the answer; leave out with accept"`
+		Answer string `json:"answer,omitempty" jsonschema:"the answer; leave out with accept; the optional reason with reject"`
 		Accept bool   `json:"accept,omitempty" jsonschema:"answer with the agent's recommendation"`
+		Reject bool   `json:"reject,omitempty" jsonschema:"answer no to the agent's recommendation"`
 	}
 	type answerOut struct {
 		Decision *board.Decision `json:"decision"`
@@ -233,9 +234,14 @@ func New(b *board.Board, callerID func() string) *mcp.Server {
 			}
 			var out answerOut
 			var err error
-			if in.Accept {
+			switch {
+			case in.Accept && in.Reject:
+				err = errors.New("accept or reject, not both")
+			case in.Accept:
 				out.Decision, out.Message, err = b.AcceptDecision(in.ID, by)
-			} else {
+			case in.Reject:
+				out.Decision, out.Message, err = b.RejectDecision(in.ID, in.Answer, by)
+			default:
 				out.Decision, out.Message, err = b.AnswerDecision(in.ID, in.Answer, by)
 			}
 			return nil, out, err

@@ -105,6 +105,7 @@ func Handler(b *board.Board) http.Handler {
 		var in struct {
 			Answer string `json:"answer"`
 			Accept bool   `json:"accept"`
+			Reject bool   `json:"reject"` // answer is then the optional reason
 			By     string `json:"by"`
 		}
 		if err := decode(r, &in); err != nil {
@@ -114,9 +115,14 @@ func Handler(b *board.Board) http.Handler {
 			Decision *board.Decision `json:"decision"`
 			Message  *board.Message  `json:"message"`
 		}
-		if in.Accept {
+		switch {
+		case in.Accept && in.Reject:
+			return nil, errors.New("accept or reject, not both")
+		case in.Accept:
 			out.Decision, out.Message, err = b.AcceptDecision(id, in.By)
-		} else {
+		case in.Reject:
+			out.Decision, out.Message, err = b.RejectDecision(id, in.Answer, in.By)
+		default:
 			out.Decision, out.Message, err = b.AnswerDecision(id, in.Answer, in.By)
 		}
 		return out, err

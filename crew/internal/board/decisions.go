@@ -160,6 +160,22 @@ func (b *Board) AcceptDecision(id int64, by string) (*Decision, *Message, error)
 	return b.AnswerDecision(id, d.Recommendation, by)
 }
 
+// RejectDecision answers no to the agent's recommendation, with an optional reason.
+func (b *Board) RejectDecision(id int64, reason, by string) (*Decision, *Message, error) {
+	d, err := b.Decision(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if d.Recommendation == "" {
+		return nil, nil, fmt.Errorf("decision %d has no recommendation to reject; answer it instead", id)
+	}
+	answer := "Rejected: " + d.Recommendation + "."
+	if reason = strings.TrimSpace(reason); reason != "" {
+		answer += " " + reason
+	}
+	return b.AnswerDecision(id, answer, by)
+}
+
 // CancelDecision withdraws a question nobody needs to answer. If it was the last open one, the
 // answers already given go to the agent.
 func (b *Board) CancelDecision(id int64) (*Decision, *Message, error) {

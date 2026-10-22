@@ -353,11 +353,12 @@ DECISION=3                         # ← change
 crew decision show $DECISION
 ```
 
-**Answer.** Take the agent's recommendation, or write your own answer:
+**Answer.** Take the agent's recommendation, reject it (with a reason if you like), or write your own answer:
 
 ```sh
 crew decision answer 3 --accept                                   # ← change: use its recommendation
 crew decision answer 4 "Use --quick, it matches the old script"   # ← change: your own answer
+crew decision answer 5 --reject "the old flag still has users"    # ← change: no to its recommendation, reason optional
 ```
 
 The agent hears nothing until **all** its open decisions are answered. Then it gets every answer together as one message and carries on:
@@ -550,7 +551,7 @@ crew agent start ITEM [--slot S] [--prompt "…"] [--model M]
 crew agent ls  |  crew agent show NAME  |  crew agent stop NAME
 crew agent revive NAME [--prompt "…"]  |  crew agent rm NAME|all [--force]
 crew msg post --to NAME "…"  |  crew msg ls --to NAME
-crew decision ls  |  crew decision answer N --accept  |  crew decision answer N "…"
+crew decision ls  |  crew decision answer N --accept  |  --reject ["why"]  |  crew decision answer N "…"
 
 # review and progress
 crew comment ls --branch agent/x  |  crew comment resolve N

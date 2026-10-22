@@ -255,7 +255,8 @@ function M.peek(a)
   end))
 end
 
--- Answer decision d: the agent's recommendation, one of its other options, or your own words.
+-- Answer decision d: the agent's recommendation, one of its other options, a no to the
+-- recommendation (with an optional reason), or your own words.
 -- The board holds the answers until the agent's last open decision is answered, then sends them
 -- all as one message. done runs after a successful answer.
 function M.answer(d, done)
@@ -265,6 +266,9 @@ function M.answer(d, done)
   end
   for _, o in ipairs(d.options or {}) do
     if o ~= d.recommendation then table.insert(choices, { label = o, answer = o }) end
+  end
+  if d.recommendation and d.recommendation ~= "" then
+    table.insert(choices, { label = "✗ Reject the recommendation (optional reason)…", reject = true })
   end
   table.insert(choices, { label = "Write my own answer…" })
   local function send(args, stdin)
@@ -283,6 +287,12 @@ function M.answer(d, done)
     if c.accept then return send({ "decision", "answer", id, "--accept" }) end
     -- answers go on stdin, so one that looks like a flag (--fast) stays an answer
     if c.answer then return send({ "decision", "answer", id, "-" }, c.answer) end
+    if c.reject then
+      return vim.ui.input({ prompt = "Why not (optional): " }, function(why)
+        if why == nil then return end -- cancelled
+        send({ "decision", "answer", id, "--reject", "-" }, why)
+      end)
+    end
     vim.ui.input({ prompt = "Answer for " .. d.agent .. ": " }, function(text)
       if text and vim.trim(text) ~= "" then send({ "decision", "answer", id, "-" }, text) end
     end)

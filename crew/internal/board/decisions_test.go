@@ -87,6 +87,9 @@ func TestDecisionsAnsweredTogether(t *testing.T) {
 	if _, _, err := b.AcceptDecision(d3.ID, "you"); err == nil {
 		t.Fatal("accepted a decision without a recommendation")
 	}
+	if _, _, err := b.RejectDecision(d3.ID, "", "you"); err == nil {
+		t.Fatal("rejected a decision without a recommendation")
+	}
 	b.AnswerDecision(d3.ID, "yes", "director")
 	_, m, err = b.CancelDecision(d4.ID)
 	if err != nil || m == nil || m.Text != "Answers to your decisions:\n1. Squash commits?\n   → yes" || m.From != "director" {
@@ -190,5 +193,21 @@ func TestWorkerGetsCrewTools(t *testing.T) {
 	// roles without instructions still get the tools
 	if p := rolePrompt(&Agent{Role: "reviewer"}); p != "" {
 		t.Fatalf("reviewer prompt %q", p)
+	}
+}
+
+func TestRejectDecision(t *testing.T) {
+	b, _, _, _, _, it := startSetup(t)
+	a, err := b.StartAgent(StartOpts{ItemID: it.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d1, _ := b.AskDecision(a.ID, "Which flag?", []string{"--fast", "--safe"}, "--fast", "quicker")
+	d2, _ := b.AskDecision(a.ID, "Squash?", []string{"yes", "no"}, "yes", "tidier")
+	b.RejectDecision(d1.ID, "", "you")
+	_, m, err := b.RejectDecision(d2.ID, "  keep the history  ", "you")
+	want := "Answers to your decisions:\n1. Which flag?\n   → Rejected: --fast.\n2. Squash?\n   → Rejected: yes. keep the history"
+	if err != nil || m == nil || m.Text != want {
+		t.Fatalf("%v %+v", err, m)
 	}
 }
