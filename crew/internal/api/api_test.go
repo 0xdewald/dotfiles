@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -117,5 +118,46 @@ func TestPostsAndEvents(t *testing.T) {
 	ms, _ := b.Messages(a.Name, "pending")
 	if len(cs) != 1 || len(ms) != 1 {
 		t.Fatal(len(cs), len(ms))
+	}
+}
+
+func TestDecisions(t *testing.T) {
+	b, a, srv := setup(t)
+	d1, _ := b.AskDecision(a.ID, "Keep it?", []string{"yes", "no"}, "yes", "safer")
+	d2, _ := b.AskDecision(a.ID, "Name?", nil, "", "")
+	resp, err := http.Get(srv.URL + "/api/decisions?agent=" + fmt.Sprint(a.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ds []board.Decision
+	json.NewDecoder(resp.Body).Decode(&ds)
+	resp.Body.Close()
+	if len(ds) != 2 || ds[0].Question != "Keep it?" || ds[0].Options[1] != "no" {
+		t.Fatalf("%+v", ds)
+	}
+	answer := func(id int64, body string) (int, map[string]json.RawMessage) {
+		r, err := http.Post(fmt.Sprintf("%s/api/decisions/%d/answer", srv.URL, id), "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var out map[string]json.RawMessage
+		json.NewDecoder(r.Body).Decode(&out)
+		return r.StatusCode, out
+	}
+	if c, out := answer(d1.ID, `{"accept":true}`); c != 200 || string(out["message"]) != "null" {
+		t.Fatal(c, out)
+	}
+	if c, _ := answer(d1.ID, `{"answer":"again"}`); c != 409 {
+		t.Fatal("answered twice:", c)
+	}
+	if c, _ := answer(d2.ID, `{"answer":""}`); c != 409 {
+		t.Fatal("empty answer accepted:", c)
+	}
+	c, out := answer(d2.ID, `{"answer":"crew"}`)
+	var m board.Message
+	json.Unmarshal(out["message"], &m)
+	if c != 200 || !strings.Contains(m.Text, "1. Keep it?\n   → yes\n2. Name?\n   → crew") {
+		t.Fatal(c, string(out["message"]))
 	}
 }

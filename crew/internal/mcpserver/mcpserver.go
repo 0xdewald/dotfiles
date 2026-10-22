@@ -167,6 +167,71 @@ func New(b *board.Board, callerID func() string) *mcp.Server {
 			it, err := b.ReportDone(a.ID, in.Summary)
 			return nil, it, err
 		})
+	type askIn struct {
+		Question       string   `json:"question" jsonschema:"one question, answerable on its own"`
+		Options        []string `json:"options,omitempty" jsonschema:"the choices you see"`
+		Recommendation string   `json:"recommendation,omitempty" jsonschema:"the option you would pick"`
+		Reason         string   `json:"reason,omitempty" jsonschema:"why you recommend it"`
+	}
+	type askOut struct {
+		ID   int64  `json:"id"`
+		Next string `json:"next"`
+	}
+	mcp.AddTool(s, &mcp.Tool{Name: "ask_decision", Description: "Put a question for a human on the crew board instead of asking in chat. " +
+		"Call it once per question, with the options, your recommendation and why, then end your turn: " +
+		"the answers to all your open questions arrive together as one message."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in askIn) (*mcp.CallToolResult, askOut, error) {
+			a, err := caller()
+			if err != nil {
+				return nil, askOut{}, err
+			}
+			d, err := b.AskDecision(a.ID, in.Question, in.Options, in.Recommendation, in.Reason)
+			if err != nil {
+				return nil, askOut{}, err
+			}
+			out := askOut{ID: d.ID, Next: "Decision " + strconv.FormatInt(d.ID, 10) + " is on the board. " +
+				"Ask any other questions the same way, then end your turn now; the answer arrives as a message."}
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: out.Next}}}, out, nil
+		})
+
+	type listDecisionsIn struct {
+		Agent  string `json:"agent,omitempty" jsonschema:"agent id or name"`
+		Status string `json:"status,omitempty" jsonschema:"open (default), answered, cancelled or all"`
+	}
+	type decisionsOut struct {
+		Decisions []*board.Decision `json:"decisions"`
+	}
+	mcp.AddTool(s, &mcp.Tool{Name: "list_decisions", Description: "List agents' decisions (open ones by default)."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in listDecisionsIn) (*mcp.CallToolResult, decisionsOut, error) {
+			ds, err := b.Decisions(board.DecisionFilter{Agent: in.Agent, Status: in.Status})
+			return nil, decisionsOut{ds}, err
+		})
+
+	type answerIn struct {
+		ID     int64  `json:"id" jsonschema:"decision id"`
+		Answer string `json:"answer,omitempty" jsonschema:"the answer; leave out with accept"`
+		Accept bool   `json:"accept,omitempty" jsonschema:"answer with the agent's recommendation"`
+	}
+	type answerOut struct {
+		Decision *board.Decision `json:"decision"`
+		Message  *board.Message  `json:"message,omitempty"`
+	}
+	mcp.AddTool(s, &mcp.Tool{Name: "answer_decision", Description: "Answer an agent's decision. Once all its open decisions are answered, " +
+		"the agent gets every answer as one message."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in answerIn) (*mcp.CallToolResult, answerOut, error) {
+			by := "director"
+			if a, err := caller(); err == nil {
+				by = a.Name
+			}
+			var out answerOut
+			var err error
+			if in.Accept {
+				out.Decision, out.Message, err = b.AcceptDecision(in.ID, by)
+			} else {
+				out.Decision, out.Message, err = b.AnswerDecision(in.ID, in.Answer, by)
+			}
+			return nil, out, err
+		})
 	return s
 }
 

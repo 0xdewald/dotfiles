@@ -361,17 +361,17 @@ func (a *app) slot(sub string, args []string) error {
 // ---- agents
 
 func (a *app) printAgents(as []*board.Agent) {
-	a.table("ID\tNAME\tSTATUS\tSTAGE\tBRANCH\tSLOT\tMSGS\tLAST", func(w io.Writer) {
+	a.table("ID\tNAME\tSTATUS\tSTAGE\tBRANCH\tSLOT\tMSGS\tDECISIONS\tLAST", func(w io.Writer) {
 		for _, x := range as {
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n", x.ID, x.Name, x.Status, orDash(x.Stage), orDash(x.Branch), orDash(x.Slot), x.Pending, short(orDash(x.LastMessage), 50))
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n", x.ID, x.Name, x.Status, orDash(x.Stage), orDash(x.Branch), orDash(x.Slot), x.Pending, x.Decisions, short(orDash(x.LastMessage), 50))
 		}
 	})
 }
 
 func (a *app) printAgent(x *board.Agent) {
-	fmt.Fprintf(a.stdout, "%s (#%d, %s)\nstatus   %s%s\nsession  %s  bg %s\nconversation %s\nslot     %s %s (ports +%d)\nitem     %s %s %s\npending  %d\n\n%s\n",
+	fmt.Fprintf(a.stdout, "%s (#%d, %s)\nstatus   %s%s\nsession  %s  bg %s\nconversation %s\nslot     %s %s (ports +%d)\nitem     %s %s %s\npending  %d\ndecisions %d open\n\n%s\n",
 		x.Name, x.ID, x.Role, x.Status, map[bool]string{true: " (attached)"}[x.Attached], x.SessionID, orDash(x.BgID),
-		orDash(x.Conversation), orDash(x.Slot), x.Dir, x.PortOffset, ptrStr(x.ItemID), x.Stage, x.Branch, x.Pending, x.LastMessage)
+		orDash(x.Conversation), orDash(x.Slot), x.Dir, x.PortOffset, ptrStr(x.ItemID), x.Stage, x.Branch, x.Pending, x.Decisions, x.LastMessage)
 }
 
 func ptrStr(p *int64) string {

@@ -86,6 +86,53 @@ func Handler(b *board.Board) http.Handler {
 		}
 		return b.AckMessage(id)
 	}))
+	m.HandleFunc("GET /api/decisions", s.wrap(func(r *http.Request) (any, error) {
+		q := r.URL.Query()
+		return b.Decisions(board.DecisionFilter{Agent: q.Get("agent"), Status: q.Get("status")})
+	}))
+	m.HandleFunc("GET /api/decisions/{id}", s.wrap(func(r *http.Request) (any, error) {
+		id, err := pathID(r)
+		if err != nil {
+			return nil, err
+		}
+		return b.Decision(id)
+	}))
+	m.HandleFunc("POST /api/decisions/{id}/answer", s.wrap(func(r *http.Request) (any, error) {
+		id, err := pathID(r)
+		if err != nil {
+			return nil, err
+		}
+		var in struct {
+			Answer string `json:"answer"`
+			Accept bool   `json:"accept"`
+			By     string `json:"by"`
+		}
+		if err := decode(r, &in); err != nil {
+			return nil, err
+		}
+		var out struct {
+			Decision *board.Decision `json:"decision"`
+			Message  *board.Message  `json:"message"`
+		}
+		if in.Accept {
+			out.Decision, out.Message, err = b.AcceptDecision(id, in.By)
+		} else {
+			out.Decision, out.Message, err = b.AnswerDecision(id, in.Answer, in.By)
+		}
+		return out, err
+	}))
+	m.HandleFunc("POST /api/decisions/{id}/cancel", s.wrap(func(r *http.Request) (any, error) {
+		id, err := pathID(r)
+		if err != nil {
+			return nil, err
+		}
+		var out struct {
+			Decision *board.Decision `json:"decision"`
+			Message  *board.Message  `json:"message"`
+		}
+		out.Decision, out.Message, err = b.CancelDecision(id)
+		return out, err
+	}))
 	m.HandleFunc("GET /api/comments", s.wrap(func(r *http.Request) (any, error) {
 		q := r.URL.Query()
 		f := board.CommentFilter{Branch: q.Get("branch"), Repo: q.Get("repo"), Status: q.Get("status")}

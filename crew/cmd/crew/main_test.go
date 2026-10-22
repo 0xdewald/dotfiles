@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/0xdewald/dotfiles/crew/internal/board"
 )
 
 func env(t *testing.T) string {
@@ -156,5 +158,91 @@ func TestAgentFlowCLI(t *testing.T) {
 	if !strings.Contains(string(calls), "stop "+a.SessionID[:8]) || !strings.Contains(string(calls), "--bg --resume "+a.SessionID+" --mcp-config ") ||
 		!strings.Contains(string(calls), " --permission-mode auto I reviewed your changes") {
 		t.Fatalf("calls:\n%s", calls)
+	}
+}
+
+func TestDecisionCLI(t *testing.T) {
+	root := env(t)
+	slot := filepath.Join(root, "slot")
+	if out, err := exec.Command("git", "init", "-b", "main", slot).CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	mustJSON(t, nil, "", "slot", "add", "s1", slot)
+	mustJSON(t, nil, "", "item", "new", "--title", "x", "--branch", "agent/x")
+	var ag struct {
+		ID        int64  `json:"id"`
+		Name      string `json:"name"`
+		SessionID string `json:"session_id"`
+	}
+	mustJSON(t, &ag, "", "agent", "start", "1")
+	// the agent asks (through crew mcp's ask_decision), then ends its turn
+	b, err := board.Open(os.Getenv("CREW_HOME"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.AskDecision(ag.ID, "Keep v1?", []string{"keep", "drop"}, "keep", "clients use it")
+	b.AskDecision(ag.ID, "Flag name?", []string{"--fast", "--quick"}, "--fast", "")
+	b.Close()
+	payload, _ := json.Marshal(map[string]string{"hook_event_name": "Stop", "session_id": ag.SessionID, "transcript_path": "/none"})
+	crew(t, string(payload), "event", "--hook")
+
+	var as []struct {
+		Status    string `json:"status"`
+		Decisions int    `json:"decisions"`
+	}
+	mustJSON(t, &as, "", "agent", "ls")
+	if as[0].Status != "awaiting-decision" || as[0].Decisions != 2 {
+		t.Fatalf("%+v", as)
+	}
+	if out, _, _ := crew(t, "", "agent", "ls"); !strings.Contains(out, "DECISIONS") {
+		t.Fatal(out)
+	}
+	var ds []struct {
+		ID       int64    `json:"id"`
+		Agent    string   `json:"agent"`
+		Options  []string `json:"options"`
+		Question string   `json:"question"`
+	}
+	mustJSON(t, &ds, "", "decision", "ls", "--agent", ag.Name)
+	if len(ds) != 2 || ds[0].Agent != ag.Name || ds[1].Options[1] != "--quick" {
+		t.Fatalf("%+v", ds)
+	}
+	if out, _, code := crew(t, "", "decision", "show", "1"); code != 0 || !strings.Contains(out, "keep  (recommended)") || !strings.Contains(out, "clients use it") {
+		t.Fatal(out)
+	}
+	var r struct {
+		Decision struct {
+			Status string `json:"status"`
+			Answer string `json:"answer"`
+		} `json:"decision"`
+		Message *struct {
+			Text   string `json:"text"`
+			Status string `json:"status"`
+		} `json:"message"`
+	}
+	mustJSON(t, &r, "", "decision", "answer", "1", "drop", "it")
+	if r.Decision.Answer != "drop it" || r.Message != nil {
+		t.Fatalf("%+v", r)
+	}
+	if _, errs, code := crew(t, "", "decision", "answer", "1", "again"); code != 1 || !strings.Contains(errs, "already answered") {
+		t.Fatal(code, errs)
+	}
+	mustJSON(t, &r, "", "decision", "answer", "2", "--accept")
+	want := "Answers to your decisions:\n1. Keep v1?\n   → drop it\n2. Flag name?\n   → --fast"
+	if r.Decision.Answer != "--fast" || r.Message == nil || r.Message.Text != want || r.Message.Status != "delivered" {
+		t.Fatalf("%+v %+v", r, r.Message)
+	}
+	calls, _ := os.ReadFile(filepath.Join(root, "calls"))
+	if n := strings.Count(string(calls), "Answers to your decisions:"); n != 1 {
+		t.Fatalf("answers sent %d times:\n%s", n, calls)
+	}
+	var none []any
+	mustJSON(t, &none, "", "decision", "ls")
+	if len(none) != 0 {
+		t.Fatal(none)
+	}
+	mustJSON(t, &none, "", "decision", "ls", "--status", "all")
+	if len(none) != 2 {
+		t.Fatal(none)
 	}
 }

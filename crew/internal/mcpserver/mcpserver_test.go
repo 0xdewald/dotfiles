@@ -100,14 +100,15 @@ func TestReportDone(t *testing.T) {
 
 	// the other tools answer and validate their output schemas
 	for name, args := range map[string]any{
-		"board_status":  map[string]any{},
-		"list_items":    map[string]any{"stage": "pushed"},
-		"show_item":     map[string]any{"id": it.ID},
-		"list_messages": map[string]any{},
-		"list_comments": map[string]any{"branch": "agent/T-1"},
-		"add_comment":   map[string]any{"branch": "agent/T-1", "file": "f", "start_line": 1, "excerpt": []string{"x"}, "text": "hm"},
-		"post_message":  map[string]any{"item_id": it.ID, "text": "hi"},
-		"move_item":     map[string]any{"id": it.ID, "stage": "reviewing"},
+		"board_status":   map[string]any{},
+		"list_items":     map[string]any{"stage": "pushed"},
+		"show_item":      map[string]any{"id": it.ID},
+		"list_messages":  map[string]any{},
+		"list_comments":  map[string]any{"branch": "agent/T-1"},
+		"add_comment":    map[string]any{"branch": "agent/T-1", "file": "f", "start_line": 1, "excerpt": []string{"x"}, "text": "hm"},
+		"post_message":   map[string]any{"item_id": it.ID, "text": "hi"},
+		"move_item":      map[string]any{"id": it.ID, "stage": "reviewing"},
+		"list_decisions": map[string]any{"status": "all"},
 	} {
 		if r := call(name, args); r.IsError {
 			t.Errorf("%s: %s", name, text(r))
@@ -120,5 +121,76 @@ func TestReportDone(t *testing.T) {
 	json.Unmarshal(j, &out)
 	if len(out.Comments) != 1 || out.Comments[0].Author != a.Name {
 		t.Fatalf("%s", j)
+	}
+}
+
+// An agent's ask_decision call (identified by CREW_AGENT_ID) lands on the board; answer_decision
+// answers it and the agent hears back
+func TestAskDecision(t *testing.T) {
+	t.Setenv("CREW_NO_NOTIFY", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	root := t.TempDir()
+	fake := filepath.Join(root, "claude")
+	os.WriteFile(fake, []byte("#!/bin/sh\nif [ \"$1\" = agents ]; then echo '[{\"sessionId\":\"abc12345-0000-4000-8000-000000000000\",\"kind\":\"background\",\"status\":\"idle\"}]'; exit 0; fi\necho \"$@\" >> "+root+"/calls\necho \"backgrounded · abc12345 · agent\"\n"), 0o755)
+	t.Setenv("CREW_CLAUDE", fake)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	clone := filepath.Join(root, "slot")
+	git(t, root, "init", "-b", "main", clone)
+	b, err := board.Open(filepath.Join(root, "home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	b.AddSlot("s1", clone, 0)
+	it, _ := b.NewItem("", "thing", "", "agent/T-2")
+	a, err := b.StartAgent(board.StartOpts{ItemID: it.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.DB.Exec(`UPDATE agents SET status = 'working' WHERE id = ?`, a.ID) // mid-turn, as when it asks
+
+	t.Setenv("CREW_AGENT_ID", fmt.Sprint(a.ID)) // the default caller, as crew sets it in mcp.json
+	ctx := context.Background()
+	st, ct := mcp.NewInMemoryTransports()
+	ss, err := New(b, nil).Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "ask_decision", Arguments: map[string]any{
+		"question": "Drop the old column?", "options": []string{"drop it", "keep it"}, "recommendation": "keep it", "reason": "a report reads it"}})
+	if err != nil || res.IsError {
+		t.Fatal(err, res)
+	}
+	txt := res.Content[0].(*mcp.TextContent).Text
+	if !strings.Contains(txt, "end your turn now") || !strings.Contains(txt, "arrives as a message") {
+		t.Fatalf("text %q", txt)
+	}
+	var out struct {
+		ID int64 `json:"id"`
+	}
+	j, _ := json.Marshal(res.StructuredContent)
+	json.Unmarshal(j, &out)
+	d, err := b.Decision(out.ID)
+	if err != nil || d.AgentID != a.ID || d.Recommendation != "keep it" || len(d.Options) != 2 || d.Reason != "a report reads it" {
+		t.Fatalf("%v %+v", err, d)
+	}
+	b.DB.Exec(`UPDATE agents SET status = 'awaiting-decision' WHERE id = ?`, a.ID) // its turn ended
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "answer_decision", Arguments: map[string]any{"id": d.ID, "accept": true}})
+	if err != nil || res.IsError {
+		t.Fatal(err, res)
+	}
+	ms, _ := b.Messages(a.Name, "delivered")
+	if len(ms) != 1 || !strings.Contains(ms[0].Text, "Drop the old column?\n   → keep it") {
+		t.Fatalf("%+v", ms)
+	}
+	calls, _ := os.ReadFile(filepath.Join(root, "calls"))
+	if !strings.Contains(string(calls), "Answers to your decisions:") {
+		t.Fatalf("not resumed with the answers:\n%s", calls)
 	}
 }

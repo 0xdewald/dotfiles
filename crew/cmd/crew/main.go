@@ -34,6 +34,7 @@ usage: crew <command> [args] [--json]
          stop ID | background ID [--continue] [--prompt P] | revive ID [--prompt P]
          rm ID|all [--force] | attach-mark ID on|off
   msg    post (--to AGENT | --item ID) [--kind note|work|review] [--from F] TEXT|- | ls [--to A] [--status S] | ack ID
+  decision ls [--agent A] [--status open|answered|cancelled|all] | show ID | answer ID TEXT|- | answer ID --accept | cancel ID
   deliver AGENT
   comment add [flags] | add --stdin-json [--send] | ls [--item] [--branch] [--repo] [--status] | resolve ID
   doc    add ITEM --kind KIND FILE|- | ls ITEM | show ID
@@ -168,6 +169,8 @@ func (a *app) dispatch(args []string) error {
 			return err
 		}
 		return a.out(map[string]int{"delivered": n}, func() { fmt.Fprintf(a.stdout, "delivered %d message(s)\n", n) })
+	case "decision":
+		return a.decision(sub, tail(rest))
 	case "comment":
 		return a.comment(sub, tail(rest))
 	case "doc":
