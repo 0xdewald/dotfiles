@@ -39,7 +39,7 @@ usage: crew <command> [args] [--json]
   comment add [flags] | add --stdin-json [--send] | ls [--item] [--branch] [--repo] [--status] | resolve ID
   doc    add ITEM --kind KIND FILE|- | ls ITEM | show ID
   event  --hook (reads a Claude Code hook payload on stdin) | ls [--since N]
-  serve  [--addr 127.0.0.1:7767]
+  serve  [--addr 127.0.0.1:7767] (in this terminal) | start | stop | restart | logs
   mcp    (MCP server on stdio)
 
 env: CREW_HOME, CREW_CLAUDE, CREW_NO_NOTIFY, CREW_CONFIG, CREW_STALE_AFTER (default 2h), JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN

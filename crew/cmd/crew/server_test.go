@@ -27,7 +27,7 @@ func TestServerState(t *testing.T) {
 		t.Fatalf("running: %+v %s", s, s)
 	}
 	write(os.Getpid(), "0000000")
-	if s := serverState(home); !s.Outdated || !strings.Contains(s.String(), "restart it") {
+	if s := serverState(home); !s.Outdated || !strings.Contains(s.String(), "crew serve restart") {
 		t.Fatalf("older build not flagged: %s", s)
 	}
 	write(999999, build()) // no such process: a leftover record

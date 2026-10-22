@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -104,7 +106,7 @@ func serverState(home string) *ServerState {
 
 func (s *ServerState) String() string {
 	if !s.Running {
-		return "not running · start it: nohup crew serve >> ~/.local/share/crew/serve.log 2>&1 < /dev/null & disown"
+		return "not running · start it: crew serve start"
 	}
 	since := s.Started
 	if t, err := time.Parse(time.RFC3339, s.Started); err == nil {
@@ -112,7 +114,7 @@ func (s *ServerState) String() string {
 	}
 	line := fmt.Sprintf("running on http://%s (pid %d, since %s, build %s)", s.Addr, s.PID, since, s.Build)
 	if s.Outdated {
-		line += fmt.Sprintf(" · older than this crew (build %s): restart it", build())
+		line += fmt.Sprintf(" · older than this crew (build %s): crew serve restart", build())
 	}
 	return line
 }
@@ -143,4 +145,85 @@ func (s *ServerState) colored(on bool) string {
 	default:
 		return green + text + reset
 	}
+}
+
+func serverLog(home string) string { return filepath.Join(home, "serve.log") }
+
+// serveStart runs `crew serve` detached (its own session, so closing the terminal doesn't stop
+// it), logging to <home>/serve.log, and waits until it answers.
+func (a *app) serveStart(args []string) error {
+	home := a.b.Home
+	if s := serverState(home); s.Running {
+		fmt.Fprintf(a.stdout, "already %s\n", s.colored(colorOn(a.stdout)))
+		return nil
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	logf, err := os.OpenFile(serverLog(home), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer logf.Close()
+	cmd := exec.Command(self, append([]string{"serve"}, args...)...)
+	cmd.Stdout, cmd.Stderr = logf, logf
+	cmd.Env = os.Environ()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	cmd.Process.Release()
+	for i := 0; i < 50; i++ { // up to 5s
+		if s := serverState(home); s.Running {
+			fmt.Fprintf(a.stdout, "server %s\nlogs: %s (crew serve logs)\n", s.colored(colorOn(a.stdout)), serverLog(home))
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("crew serve didn't come up; see %s", serverLog(home))
+}
+
+// serveStop stops the server crew status reports (SIGTERM, then SIGKILL after 5s).
+func (a *app) serveStop() error {
+	home := a.b.Home
+	s := serverState(home)
+	if !s.Running {
+		os.Remove(serverFile(home)) // a leftover record from a crash
+		fmt.Fprintln(a.stdout, "server not running")
+		return nil
+	}
+	syscall.Kill(s.PID, syscall.SIGTERM)
+	for i := 0; i < 50; i++ {
+		if syscall.Kill(s.PID, 0) != nil {
+			fmt.Fprintf(a.stdout, "stopped server (pid %d)\n", s.PID)
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	syscall.Kill(s.PID, syscall.SIGKILL)
+	os.Remove(serverFile(home))
+	fmt.Fprintf(a.stdout, "killed server (pid %d): it didn't stop within 5s\n", s.PID)
+	return nil
+}
+
+// serveLogs prints the last 40 lines of the server log.
+func (a *app) serveLogs() error {
+	f, err := os.Open(serverLog(a.b.Home))
+	if err != nil {
+		return fmt.Errorf("no server log yet (%s)", serverLog(a.b.Home))
+	}
+	defer f.Close()
+	var lines []string
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		lines = append(lines, sc.Text())
+		if len(lines) > 40 {
+			lines = lines[1:]
+		}
+	}
+	for _, l := range lines {
+		fmt.Fprintln(a.stdout, l)
+	}
+	return nil
 }
