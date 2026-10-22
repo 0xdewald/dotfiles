@@ -86,6 +86,9 @@ type Agent struct {
 	// ClaudeArgs are the extra claude flags for this agent (crew's MCP tools, its instructions);
 	// filled by `crew agent show` for clients that start its session themselves.
 	ClaudeArgs []string `json:"claude_args,omitempty"`
+	// Address is the running session's socket for Claude's session messaging (what the mailman
+	// sends to; a director session can use it too). Filled by `crew agent show` when it's running.
+	Address string `json:"address,omitempty"`
 }
 
 const agentSel = `SELECT a.id, a.name, a.role, a.model, a.session_id, a.bg_id, a.slot_id, COALESCE(s.name,''),

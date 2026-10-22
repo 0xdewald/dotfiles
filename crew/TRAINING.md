@@ -308,6 +308,8 @@ crew msg post --to "$AGENT" "$MESSAGE"
 message 1 to Sneaky Sprockets: pending
 ```
 
+**How it gets there.** If the agent's session is running in the background, crew hands the message to it through a **mailman**: a short headless Claude (a small model, one tool call, a few seconds) that uses Claude's session messaging to deliver it. The agent's session keeps running, so its connectors (Jira, Docs, Slack, …) stay connected. If the session isn't running, or the mailman can't deliver, crew resumes the session with the message instead. `crew event ls` shows which way each message went (`"via":"mailman"` or `"via":"resume"`).
+
 **"pending" is normal.** A message waits until the agent is free:
 - If the agent is **idle or stopped**, crew delivers it straight away by resuming the session with your message.
 - If it's **busy**, the message waits and is delivered the moment the agent finishes its turn.

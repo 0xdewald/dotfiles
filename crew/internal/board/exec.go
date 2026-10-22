@@ -13,6 +13,8 @@ import (
 type Exec interface {
 	// Claude runs the claude binary in dir with extra env and returns stdout.
 	Claude(dir string, env []string, args ...string) (string, error)
+	// ClaudeInput is Claude with stdin (for `claude -p`, whose prompt comes on stdin).
+	ClaudeInput(dir string, env []string, stdin string, args ...string) (string, error)
 	// Git runs git in dir and returns trimmed stdout.
 	Git(dir string, args ...string) (string, error)
 	// Notify shows a desktop notification (best effort, non-blocking).
@@ -35,6 +37,19 @@ func (sysExec) Claude(dir string, env []string, args ...string) (string, error) 
 	cmd := exec.Command(claudeBin(), args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Run(); err != nil {
+		return out.String(), fmt.Errorf("claude %s: %w: %s", strings.Join(args[:min(len(args), 2)], " "), err, strings.TrimSpace(errb.String()))
+	}
+	return out.String(), nil
+}
+
+func (sysExec) ClaudeInput(dir string, env []string, stdin string, args ...string) (string, error) {
+	cmd := exec.Command(claudeBin(), args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
+	cmd.Stdin = strings.NewReader(stdin)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {

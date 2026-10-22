@@ -234,20 +234,38 @@ func (b *Board) deliver(id int64) (int, error) {
 			return fail(err)
 		}
 	}
-	if a.BgID != "" {
-		b.Exec.Claude(a.Dir, b.agentEnv(a), "stop", a.BgID) // best effort: it may already be gone
+	data := map[string]any{}
+	// A running session gets it through the mailman, so its process (and its connectors) stay up.
+	// Otherwise, or if that fails, resume it with the message.
+	var mailErr error = errNotRunning
+	if a.Status != StatusStopped {
+		mailErr = b.mail(a, combine(msgs))
 	}
-	sid, bg, err := b.runBackground(a, combine(msgs))
-	if err != nil {
-		return fail(err)
+	var sid, bg string
+	if mailErr == nil {
+		data["via"] = "mailman"
+	} else {
+		data["via"] = "resume"
+		if mailErr != errNotRunning {
+			data["mailman_error"] = mailErr.Error()
+		}
+		if a.BgID != "" {
+			b.Exec.Claude(a.Dir, b.agentEnv(a), "stop", a.BgID) // best effort: it may already be gone
+		}
+		if sid, bg, err = b.runBackground(a, combine(msgs)); err != nil {
+			return fail(err)
+		}
 	}
+	// only now take the write lock: the agent's hooks write to the board while it starts
 	tx, err := b.DB.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE agents SET session_id = ?, bg_id = ?, updated = ? WHERE id = ?`, sid, bg, b.now(), id); err != nil {
-		return 0, err
+	if sid != "" {
+		if _, err := tx.Exec(`UPDATE agents SET session_id = ?, bg_id = ?, updated = ? WHERE id = ?`, sid, bg, b.now(), id); err != nil {
+			return 0, err
+		}
 	}
 	if err := b.markDelivered(tx, msgs); err != nil {
 		return 0, err
@@ -256,7 +274,9 @@ func (b *Board) deliver(id int64) (int, error) {
 	for i, m := range msgs {
 		ids[i] = m.ID
 	}
-	if err := b.event(tx, "msg.deliver", &id, a.ItemID, map[string]any{"message_ids": ids, "resumed": true}); err != nil {
+	data["message_ids"] = ids
+	data["resumed"] = data["via"] == "resume"
+	if err := b.event(tx, "msg.deliver", &id, a.ItemID, data); err != nil {
 		return 0, err
 	}
 	return len(msgs), tx.Commit()

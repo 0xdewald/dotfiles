@@ -895,3 +895,69 @@ func TestFollowAfterClearByName(t *testing.T) {
 		t.Fatal("followed a session in another folder")
 	}
 }
+
+// A running session gets messages through the mailman: no stop, no resume, same process
+func TestMailmanDelivers(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	hook(t, b, "Stop", a.SessionID, writeTranscript(t, "done"))
+	socks := t.TempDir()
+	t.Setenv("CREW_CC_SOCKS", socks)
+	t.Setenv("FAKE_LIVE_PID", "4242")
+	os.WriteFile(filepath.Join(socks, "4242.sock"), nil, 0o644)
+	n := len(f.Calls(t))
+	m, err := b.PostMessage(PostOpts{To: a.Name, Text: "please add tests"})
+	if err != nil || m.Status != "delivered" {
+		t.Fatalf("%v %+v", err, m)
+	}
+	calls := f.Calls(t)[n:]
+	var mailman *FakeCall
+	for i, c := range calls {
+		if c.Args[0] == "stop" || slices.Contains(c.Args, "--resume") {
+			t.Fatalf("session restarted: %q", c.Args)
+		}
+		if c.Args[0] == "-p" {
+			mailman = &calls[i]
+		}
+	}
+	if mailman == nil || !slices.Contains(mailman.Args, "haiku") || !slices.Contains(mailman.Args, "auto") {
+		t.Fatalf("mailman call: %+v", mailman)
+	}
+	stdin, _ := os.ReadFile(filepath.Join(f.Dir, fmt.Sprint(len(f.Calls(t))), "stdin"))
+	if !strings.Contains(string(stdin), "uds:"+filepath.Join(socks, "4242.sock")) || !strings.Contains(string(stdin), "please add tests") {
+		t.Fatalf("mailman prompt:\n%s", stdin)
+	}
+	if a2, _ := b.AgentByID(a.ID); a2.Status != StatusWorking || a2.SessionID != a.SessionID {
+		t.Fatalf("agent: %+v", a2)
+	}
+}
+
+// If the mailman can't send it, crew resumes the session with the message instead
+func TestMailmanFallsBackToResume(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	hook(t, b, "Stop", a.SessionID, writeTranscript(t, "done"))
+	socks := t.TempDir()
+	t.Setenv("CREW_CC_SOCKS", socks)
+	t.Setenv("FAKE_LIVE_PID", "4242")
+	os.WriteFile(filepath.Join(socks, "4242.sock"), nil, 0o644)
+	t.Setenv("FAKE_MAIL_REPLY", "FAILED: no such session")
+	m, err := b.PostMessage(PostOpts{To: a.Name, Text: "please add tests"})
+	if err != nil || m.Status != "delivered" {
+		t.Fatalf("%v %+v", err, m)
+	}
+	last := f.Calls(t)[len(f.Calls(t))-1].Args
+	if !slices.Contains(last, "--resume") || last[len(last)-1] != "please add tests" {
+		t.Fatalf("no resume fallback: %q", last)
+	}
+	evs, _ := b.Events(0, 1000)
+	found := false
+	for _, e := range evs {
+		if e.Type == "msg.deliver" && strings.Contains(string(e.Data), "mailman_error") && strings.Contains(string(e.Data), `"via":"resume"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("fallback not recorded in the event")
+	}
+}

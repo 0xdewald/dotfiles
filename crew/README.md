@@ -58,12 +58,14 @@ in the slot, with `CREW_AGENT_ID`, `CREW_AGENT_NAME`, `CREW_HOME`,
 session id itself and prints `backgrounded · <short id> · …`; crew reads that
 and looks up the full id with `claude agents --json`.
 
-Messages to an idle or stopped agent are delivered right away by
-`claude stop <bg>` then `claude --bg --resume <session> "<prompt>"` (or a fresh
-start if it never got a prompt). A busy agent gets them on its next `Stop`
-hook. An attached agent (open in a client) is never resumed: the client types
-the message in and calls `crew msg ack ID`. When the client lets it go,
-`crew agent background ID [--continue]` resumes it in the background.
+Messages to an idle agent (or one waiting on a human) whose session is running
+go through the **mailman**: crew runs `claude -p --model haiku` (in the agent's
+permission mode, `CREW_MAILMAN_MODEL` to change the model) which sends the
+message with Claude's session messaging to `uds:/tmp/cc-socks/<pid>.sock`, the
+running session's socket (`crew agent show --json` lists it as `address`). The
+session isn't restarted, so its MCP connectors stay connected. A stopped agent,
+or a delivery the mailman couldn't make, falls back to `claude stop <bg>` then
+`claude --bg --resume <session> "<prompt>"`.
 
 Every start and resume also passes `--mcp-config <CREW_HOME>/agents/<id>/mcp.json`
 (rewritten each time) and, for workers, `--append-system-prompt` with

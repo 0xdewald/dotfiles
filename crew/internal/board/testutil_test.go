@@ -46,8 +46,13 @@ const fakeScript = `#!/bin/sh
 d="@DIR@"
 if [ "$1" = "agents" ]; then
   printf '['; sep=''
-  [ -f "$d.bgs" ] && while read id cwd st; do printf '%s{"sessionId":"%s-0000-4000-8000-000000000000","cwd":"%s","kind":"background","status":%s}' "$sep" "$id" "$cwd" "$st"; sep=','; done < "$d.bgs"
+  [ -f "$d.bgs" ] && while read id cwd st; do printf '%s{"sessionId":"%s-0000-4000-8000-000000000000","cwd":"%s","kind":"background","status":%s,"pid":%s}' "$sep" "$id" "$cwd" "$st" "${FAKE_LIVE_PID:-0}"; sep=','; done < "$d.bgs"
   printf ']\n'; exit 0
+fi
+if [ "$1" = "-p" ]; then # the mailman: prompt on stdin
+  n=$(ls "$d" | wc -l | tr -d ' '); n=$((n + 1)); mkdir -p "$d/$n"
+  for a in "$@"; do printf '%s\0' "$a"; done > "$d/$n/args"; env | grep '^CREW_' | sort > "$d/$n/env"; pwd -P > "$d/$n/cwd"
+  cat > "$d/$n/stdin"; echo "${FAKE_MAIL_REPLY:-SENT}"; exit 0
 fi
 n=$(ls "$d" | wc -l | tr -d ' ')
 n=$((n + 1))
