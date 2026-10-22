@@ -176,7 +176,7 @@ func TestAgentStart(t *testing.T) {
 	}
 	c := calls[0]
 	want := withCrew(b, a, []string{"--bg", "-n", a.Name}, "--permission-mode", "auto")
-	if !slices.Equal(c.Args, want) {
+	if len(c.Args) != len(want)+1 || !slices.Equal(c.Args[:len(want)], want) || !strings.Contains(c.Args[len(want)], "Jira ticket: VD-1") {
 		t.Fatalf("args = %q, want %q", c.Args, want)
 	}
 	if c.Cwd != clones[1] {
@@ -816,5 +816,25 @@ func TestCommentOnCommitAndOldSide(t *testing.T) {
 	cs, _ := b.Comments(CommentFilter{Branch: a.Branch})
 	if len(cs) != 2 || cs[1].Side != "old" || cs[0].Commit == "" {
 		t.Fatalf("stored: %+v", cs)
+	}
+}
+
+// Starting an agent always gives it the ticket; --prompt adds to it
+func TestStartGivesTheTicket(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	tk, _ := b.AddTicket("", "", "Write a PRD for search.\nCover the benefits.", nil)
+	it2, err := b.NewItem(fmt.Sprint(tk.ID), "", "", "agent/prd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.MoveItem(it2.ID, "queued", false)
+	_ = it
+	if _, err := b.StartAgent(StartOpts{ItemID: it2.ID, Prompt: "Plan first."}); err != nil {
+		t.Fatal(err)
+	}
+	args := f.Calls(t)[len(f.Calls(t))-1].Args
+	p := args[len(args)-1]
+	if !strings.Contains(p, "Write a PRD for search.") || !strings.Contains(p, "Cover the benefits.") || !strings.HasSuffix(p, "Plan first.") {
+		t.Fatalf("first prompt:\n%s", p)
 	}
 }
