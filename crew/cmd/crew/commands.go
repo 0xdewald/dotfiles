@@ -31,12 +31,13 @@ func (a *app) status() error {
 	srv := serverState(a.b.Home)
 	s.Server = srv
 	return a.out(s, func() {
-		fmt.Fprintf(a.stdout, "%-13s %s\n", "server", srv)
+		fmt.Fprintf(a.stdout, "%-13s %s\n", "server", srv.colored(colorOn(a.stdout)))
 		for _, st := range board.Stages {
 			if n := s.Stages[st]; n > 0 {
 				fmt.Fprintf(a.stdout, "%-13s %d\n", st, n)
 			}
 		}
+		fmt.Fprintln(a.stdout)
 		a.printAgents(s.Agents)
 	})
 }
