@@ -268,7 +268,8 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	prompt := o.Prompt
+	// the work itself (the ticket) always goes in the first prompt; --prompt adds to it
+	prompt := strings.TrimSpace(b.workBrief(item) + "\n\n" + o.Prompt)
 	if len(msgs) > 0 {
 		prompt = strings.TrimSpace(prompt + "\n\n" + combine(msgs))
 	}
@@ -449,4 +450,22 @@ func newUUID() string {
 	u[6] = u[6]&0x0f | 0x40
 	u[8] = u[8]&0x3f | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:])
+}
+
+// workBrief tells a new agent what its work item is: the item's title, the ticket text, and the
+// Jira key to read with its own tools.
+func (b *Board) workBrief(it *Item) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Your work item (#%d): %s", it.ID, it.Title)
+	if it.TicketID != nil {
+		if t, err := b.Ticket(fmt.Sprint(*it.TicketID)); err == nil {
+			if t.JiraKey != "" {
+				fmt.Fprintf(&sb, "\nJira ticket: %s. Read it in full with your Jira tools before you start.", t.JiraKey)
+			}
+			if text := strings.TrimSpace(t.Text); text != "" && text != it.Title {
+				sb.WriteString("\n\nTicket:\n" + text)
+			}
+		}
+	}
+	return sb.String()
 }
