@@ -83,6 +83,9 @@ type Agent struct {
 	// Conversation is the session holding the agent's conversation ("" if none yet); filled by
 	// `crew agent show` so clients resume the right one.
 	Conversation string `json:"conversation,omitempty"`
+	// ClaudeArgs are the extra claude flags for this agent (crew's MCP tools, its instructions);
+	// filled by `crew agent show` for clients that start its session themselves.
+	ClaudeArgs []string `json:"claude_args,omitempty"`
 }
 
 const agentSel = `SELECT a.id, a.name, a.role, a.model, a.session_id, a.bg_id, a.slot_id, COALESCE(s.name,''),

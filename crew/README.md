@@ -78,8 +78,9 @@ the agent (its absolute path) as `crew mcp`, with the agent's identity:
 The instructions tell a worker it's crew agent <Name> on <branch> in this
 checkout, not to create worktrees, to put questions on the board with
 `ask_decision` (then end its turn), and to call `report_done` after pushing.
-Each slot allows `mcp__crew__*`, so the tools never prompt. (An agent taken
-over in Neovim runs without them until it goes back to the background.)
+Each slot allows `mcp__crew` and `mcp__crew__*`, so the tools never prompt.
+An agent taken over in Neovim gets the same tools and instructions (`crew agent
+show --json` lists them as `claude_args`).
 
 Agents idle or waiting for input longer than `CREW_STALE_AFTER` (default 2h)
 go `stale` (agents `awaiting-decision` never do): crew stops their background session (checked whenever crew runs,

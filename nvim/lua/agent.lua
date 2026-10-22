@@ -105,7 +105,8 @@ end
 
 -- Open Claude on a session: resume it when it exists, otherwise start a new one with that ID.
 -- opts (all optional): track = false to leave the folder's saved session alone, env, agent, name,
--- resume = true when the caller knows id is an existing conversation (crew does).
+-- resume = true when the caller knows id is an existing conversation (crew does), args = extra
+-- claude flags (crew's MCP tools and instructions for its agents).
 function M.start(id, opts)
   opts = opts or {}
   prepare(opts)
@@ -116,6 +117,7 @@ function M.start(id, opts)
     id = id or vim.trim(vim.fn.system("uuidgen")):lower()
     args = ("--session-id %s -n %s"):format(id, vim.fn.shellescape(opts.name or name()))
   end
+  for _, x in ipairs(opts.args or {}) do args = args .. " " .. vim.fn.shellescape(x) end
   if opts.track ~= false then vim.fn.writefile({ id }, id_file()) end
   require("claudecode.terminal").open({}, args)
 end

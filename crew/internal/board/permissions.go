@@ -33,7 +33,8 @@ var gitDeny = []string{
 
 // crew's own MCP tools (ask_decision, report_done, …), which every agent gets: no prompt for them,
 // since a background agent has nobody to answer one.
-var mcpAllow = []string{"mcp__crew__*"}
+// both the documented server-wide form and the wildcard form, whichever Claude honours
+var mcpAllow = []string{"mcp__crew", "mcp__crew__*"}
 
 // PermissionsFile is where the rules go, inside each of a slot's repos.
 const PermissionsFile = ".claude/settings.local.json"

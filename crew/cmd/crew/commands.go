@@ -441,6 +441,7 @@ func (a *app) agent(sub string, args []string) error {
 			return err
 		}
 		ag.Conversation, _ = a.b.ConversationID(ag)
+		ag.ClaudeArgs, _ = a.b.CrewArgs(ag)
 		return a.out(ag, func() { a.printAgent(ag) })
 	case "stop":
 		pos, err := parse(flag.NewFlagSet("agent stop", flag.ContinueOnError), args, 1)

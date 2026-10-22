@@ -36,6 +36,10 @@ func (b *Board) crewArgs(a *Agent) ([]string, error) {
 	return args, nil
 }
 
+// CrewArgs is crewArgs for clients that start the agent's session themselves (Neovim's take-over),
+// so it has crew's tools and instructions there too.
+func (b *Board) CrewArgs(a *Agent) ([]string, error) { return b.crewArgs(a) }
+
 // MCPConfigPath is where an agent's MCP config lives.
 func (b *Board) MCPConfigPath(id int64) string {
 	return filepath.Join(b.Home, "agents", strconv.FormatInt(id, 10), "mcp.json")

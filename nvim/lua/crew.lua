@@ -140,7 +140,7 @@ function M.open(a)
   -- Resume the conversation crew says is the agent's. One that never got a prompt has none: start
   -- a fresh session; the board takes it over once you use it (crew follows CREW_AGENT_ID).
   local sid = (a.conversation and a.conversation ~= "") and a.conversation or nil
-  agent.start(sid, { track = false, resume = sid ~= nil, env = agent_env(a), agent = a, name = a.name })
+  agent.start(sid, { track = false, resume = sid ~= nil, env = agent_env(a), agent = a, name = a.name, args = a.claude_args })
   agent_term_buf = nil
   vim.wait(3000, function() return agent.claude_buf() ~= nil end, 20)
   agent_term_buf = agent.claude_buf()
