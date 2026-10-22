@@ -206,13 +206,18 @@ function M.peek(a)
   if live then
     win = Snacks.terminal.open({ vim.env.CREW_CLAUDE or "claude", "attach", a.bg_id }, {
       cwd = a.dir, interactive = true,
-      win = float_opts(a, " Esc Esc, then q: close (it keeps running) · Ctrl-t in the dashboard: take over "),
+      win = float_opts(a, " Ctrl-q: close (it keeps running) · Ctrl-\\ Ctrl-n: stop typing · don't press Esc: it interrupts the agent "),
     })
     win:on("BufLeave", function() end) -- keep snacks' default terminal keys
-    vim.keymap.set("n", "q", function()
+    -- Close without sending Claude a key: Esc would interrupt the agent's turn (snacks' "Esc Esc
+    -- for normal mode" passes the first Esc through to Claude)
+    local function close()
       pcall(vim.fn.jobstop, vim.b[win.buf].terminal_job_id) -- ends the viewer, not the agent
       win:close()
-    end, { buffer = win.buf, desc = "Close (agent keeps running)" })
+    end
+    vim.keymap.set({ "t", "n" }, "<C-q>", close, { buffer = win.buf, desc = "Close (agent keeps running)" })
+    vim.keymap.set("n", "q", close, { buffer = win.buf, desc = "Close (agent keeps running)" })
+    pcall(vim.keymap.del, "t", "<Esc>", { buffer = win.buf }) -- Esc goes to Claude, untouched
   else
     win = Snacks.win(vim.tbl_extend("force", float_opts(a, " q: close · r: revive · t: take over in the side panel "), {
       text = conversation_lines(a), ft = "markdown", bo = { modifiable = false }, wo = { wrap = true, linebreak = true },
