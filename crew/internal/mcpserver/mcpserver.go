@@ -17,7 +17,15 @@ func New(b *board.Board, callerID func() string) *mcp.Server {
 	if callerID == nil {
 		callerID = func() string { return os.Getenv("CREW_AGENT_ID") }
 	}
-	s := mcp.NewServer(&mcp.Implementation{Name: "crew", Version: "0.1.1"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "crew", Version: "0.1.1"}, &mcp.ServerOptions{
+		// the tool list never changes while the server runs, so let clients cache it (the SDK
+		// sends a TTL of 0 by default, meaning already expired)
+		SetCacheable: func(_ context.Context, _ mcp.Request, c *mcp.Cacheable) {
+			if c.TTLMs <= 0 {
+				c.TTLMs = 3600_000
+			}
+		},
+	})
 	caller := func() (*board.Agent, error) {
 		id := callerID()
 		if id == "" {
