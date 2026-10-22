@@ -858,3 +858,37 @@ func TestStartAgainResends(t *testing.T) {
 		t.Fatalf("started a second agent: %d", len(as))
 	}
 }
+
+// After /clear in a background session (Claude's daemon doesn't pass crew's env to hooks), the
+// board follows the agent by the session's name, and resumes the newer conversation
+func TestFollowAfterClearByName(t *testing.T) {
+	b, _, _, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	os.Unsetenv("CREW_AGENT_ID")
+	pdir := projectDir(a.Dir)
+	newSID := "7e57c1ea-0000-4000-8000-000000000000"
+	tr := filepath.Join(pdir, newSID+".jsonl")
+	time.Sleep(20 * time.Millisecond)
+	os.WriteFile(tr, []byte(`{"type":"custom-title","customTitle":"`+a.Name+`","sessionId":"`+newSID+`"}`+"\n"), 0o644)
+	if sid, _ := b.ConversationID(a); sid != newSID {
+		t.Fatalf("conversation = %s, want the newer one after /clear", sid)
+	}
+	raw, _ := json.Marshal(map[string]string{"hook_event_name": "UserPromptSubmit", "session_id": newSID, "transcript_path": tr, "cwd": filepath.Join(a.Dir, "sub")})
+	if ok, err := b.HandleHook(raw); !ok || err != nil {
+		t.Fatalf("not followed by name: %v %v", ok, err)
+	}
+	if a2, _ := b.AgentByID(a.ID); a2.SessionID != newSID || a2.Status != StatusWorking {
+		t.Fatalf("agent: %+v", a2)
+	}
+	// someone else's session (other name, or another folder) is left alone
+	other := filepath.Join(pdir, "0ther000-0000-4000-8000-000000000000.jsonl")
+	os.WriteFile(other, []byte(`{"type":"custom-title","customTitle":"Someone Else"}`+"\n"), 0o644)
+	raw, _ = json.Marshal(map[string]string{"hook_event_name": "Stop", "session_id": "0ther000-0000-4000-8000-000000000000", "transcript_path": other, "cwd": a.Dir})
+	if ok, _ := b.HandleHook(raw); ok {
+		t.Fatal("followed a session with another name")
+	}
+	raw, _ = json.Marshal(map[string]string{"hook_event_name": "Stop", "session_id": "elsewh00-0000-4000-8000-000000000000", "transcript_path": tr, "cwd": "/somewhere/else"})
+	if ok, _ := b.HandleHook(raw); ok {
+		t.Fatal("followed a session in another folder")
+	}
+}

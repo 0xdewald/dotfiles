@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -40,7 +41,7 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 		if p.Event == "SessionStart" {
 			return false, nil
 		}
-		a, err = b.followSession(p.SessionID)
+		a, err = b.followSession(p)
 		if errors.Is(err, ErrNotFound) {
 			return false, nil
 		}
@@ -99,15 +100,27 @@ func (b *Board) HandleHook(raw []byte) (bool, error) {
 }
 
 // followSession moves the agent named by $CREW_AGENT_ID onto session sid.
-func (b *Board) followSession(sid string) (*Agent, error) {
-	id, err := strconv.ParseInt(os.Getenv("CREW_AGENT_ID"), 10, 64)
-	if err != nil {
-		return nil, ErrNotFound
+// followSession moves an agent onto session p.SessionID. Which agent: $CREW_AGENT_ID when Claude
+// passed crew's environment to the hook, else the session's name (crew names sessions after the
+// agent with -n, and Claude keeps that name across /clear) for a session in the agent's folder.
+// Background sessions run under Claude's daemon, which doesn't pass crew's environment on.
+func (b *Board) followSession(p HookPayload) (*Agent, error) {
+	sid := p.SessionID
+	var a *Agent
+	if id, err := strconv.ParseInt(os.Getenv("CREW_AGENT_ID"), 10, 64); err == nil {
+		if a, err = b.AgentByID(id); err != nil {
+			return nil, err
+		}
+	} else {
+		name := TranscriptTitle(p.TranscriptPath)
+		if name == "" {
+			return nil, ErrNotFound
+		}
+		if a, err = b.Agent(name); err != nil || !inDir(p.Cwd, a.Dir) {
+			return nil, ErrNotFound
+		}
 	}
-	a, err := b.AgentByID(id)
-	if err != nil {
-		return nil, err
-	}
+	id := a.ID
 	if _, err := b.DB.Exec(`UPDATE agents SET session_id = ?, updated = ? WHERE id = ?`, sid, b.now(), id); err != nil {
 		return nil, err
 	}
@@ -201,3 +214,41 @@ func truncate(s string, n int) string {
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// TranscriptTitle is the session's name as Claude recorded it in its conversation file (the last
+// "customTitle"), "" if there is none.
+func TranscriptTitle(path string) string {
+	if path == "" {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	title := ""
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 64<<20)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if !strings.Contains(string(line), `"customTitle"`) {
+			continue
+		}
+		var e struct {
+			CustomTitle string `json:"customTitle"`
+		}
+		if json.Unmarshal(line, &e) == nil && e.CustomTitle != "" {
+			title = e.CustomTitle
+		}
+	}
+	return title
+}
+
+// inDir: is path dir or inside it (an agent may cd into a subfolder of its checkout)
+func inDir(path, dir string) bool {
+	if path == "" {
+		return true // older hook payloads have no cwd; the name alone decides
+	}
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && !strings.HasPrefix(rel, "..")
+}

@@ -45,10 +45,13 @@ func hasConversation(dir, sid string) bool {
 // has a conversation file, else the newest conversation in its folder named after the agent (crew
 // names sessions with -n, and Claude records that name in the file). false if it has none yet.
 func (b *Board) ConversationID(a *Agent) (string, bool) {
-	if hasConversation(a.Dir, a.SessionID) {
-		return a.SessionID, true
-	}
 	pdir := projectDir(a.Dir)
+	// a newer conversation with the agent's name wins: /clear starts one, and the board may not
+	// have seen it yet
+	var recorded time.Time
+	if st, err := os.Stat(filepath.Join(pdir, a.SessionID+".jsonl")); err == nil && a.SessionID != "" {
+		recorded = st.ModTime()
+	}
 	entries, err := os.ReadDir(pdir)
 	if err != nil {
 		return "", false
@@ -66,6 +69,9 @@ func (b *Board) ConversationID(a *Agent) (string, bool) {
 		if fileContains(filepath.Join(pdir, e.Name()), needle) {
 			best, bestTime = strings.TrimSuffix(e.Name(), ".jsonl"), info.ModTime()
 		}
+	}
+	if !recorded.IsZero() && (best == "" || !bestTime.After(recorded)) {
+		return a.SessionID, true
 	}
 	return best, best != ""
 }
