@@ -924,7 +924,8 @@ func TestMailmanDelivers(t *testing.T) {
 		t.Fatalf("mailman call: %+v", mailman)
 	}
 	stdin, _ := os.ReadFile(filepath.Join(f.Dir, fmt.Sprint(len(f.Calls(t))), "stdin"))
-	if !strings.Contains(string(stdin), "uds:"+filepath.Join(socks, "4242.sock")) || !strings.Contains(string(stdin), "please add tests") {
+	if !strings.Contains(string(stdin), "uds:"+filepath.Join(socks, "4242.sock")) || !strings.Contains(string(stdin), "please add tests") ||
+		!strings.Contains(string(stdin), "don't reply to it with SendMessage") {
 		t.Fatalf("mailman prompt:\n%s", stdin)
 	}
 	if a2, _ := b.AgentByID(a.ID); a2.Status != StatusWorking || a2.SessionID != a.SessionID {

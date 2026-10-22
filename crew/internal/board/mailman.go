@@ -75,7 +75,11 @@ func (b *Board) mail(a *Agent, text string) error {
 	if _, err := os.Stat(sock); err != nil {
 		return fmt.Errorf("no session socket %s", sock)
 	}
-	framed := "Message from your human, sent through crew (the board that runs you):\n\n" + text
+	// the relay session exits once it has delivered: without saying so, agents try to SendMessage
+	// their answer back to it and fail
+	framed := "Message from your human, relayed by crew (the board that runs you). The relay session " +
+		"has already closed: don't reply to it with SendMessage. Act on the message and answer in " +
+		"your normal reply; crew shows it to your human.\n\n" + text
 	out, err := b.Exec.ClaudeInput(a.Dir, nil, fmt.Sprintf(mailmanPrompt, "uds:"+sock, framed),
 		"-p", "--model", mailmanModel(), "--permission-mode", permissionMode(a.Role),
 		"--allowedTools", "SendMessage,ToolSearch")
