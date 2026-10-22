@@ -158,3 +158,12 @@ POST `/api/items/{id}/move` `{stage, force}`, `/api/messages`
 | `CREW_CONFIG` | config file path |
 | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` | fetch tickets via Jira REST v3 |
 | `CREW_AGENT_ID` | set for agents; identifies the caller to `crew mcp` and `msg post` |
+
+## Roadmap
+
+- Milestone 2: plans. A tech lead researches tickets and writes plans; interns review them.
+- Milestone 3: reviews. A reviewer agent, fix rounds, draft PRs.
+- Milestone 4: director. A director chat on top, budgets, a daily digest.
+- Later: crew in any Claude chat. Register `crew mcp` as a user-level MCP server so any Claude
+  session, not only crew's agents, can pull board and agent summaries and message or answer
+  agents. Without `$CREW_AGENT_ID` the caller acts as you, the human, rather than as an agent.
