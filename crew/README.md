@@ -36,7 +36,8 @@ crew comment ls [--item] [--branch] [--repo] [--status] | resolve ID
 crew doc add ITEM --kind plan|plan-review|code-review|note FILE|- | ls ITEM | show ID
 crew event --hook                          # Claude Code hook handler: reads the payload on stdin, prints nothing
 crew event ls [--since N]
-crew serve [--addr 127.0.0.1:7767]
+crew serve [--addr 127.0.0.1:7767]   # in this terminal
+crew serve start | stop | restart | logs   # in the background; crew status shows it
 crew mcp                                   # MCP server on stdio
 ```
 

@@ -15,7 +15,24 @@ import (
 	"github.com/0xdewald/dotfiles/crew/internal/mcpserver"
 )
 
+// crew serve [--addr A]: run the server in this terminal. crew serve start|stop|restart|logs
+// manage it in the background instead.
 func (a *app) serve(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "start":
+			return a.serveStart(args[1:])
+		case "stop":
+			return a.serveStop()
+		case "restart":
+			if err := a.serveStop(); err != nil {
+				return err
+			}
+			return a.serveStart(args[1:])
+		case "logs":
+			return a.serveLogs()
+		}
+	}
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:7767", "listen address")
 	if _, err := parse(fs, args, 0); err != nil {

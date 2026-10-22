@@ -466,6 +466,18 @@ crew init
 
 ---
 
+## Optional: the background server
+
+`crew serve` checks every minute for agents that have gone stale (otherwise that happens whenever you run a crew command) and serves the local web API for future apps. Neovim doesn't need it.
+
+```sh
+crew serve start      # runs in the background; logs to ~/.local/share/crew/serve.log
+crew status           # first line: running (green), not running (red), or "crew serve restart" after a rebuild (yellow)
+crew serve restart    # after rebuilding crew
+crew serve logs       # last lines of its log
+crew serve stop
+```
+
 ## 14. Cheat sheet
 
 ```sh
