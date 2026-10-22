@@ -229,6 +229,8 @@ What just happened:
 3. started a background Claude there, named "Sneaky Sprockets", with your prompt as its first message. Workers run in **auto mode**: routine actions (reading the ticket, editing, running tests, committing) go ahead without asking, and anything risky still asks. When an agent asks, it shows as `needs-input` and you get a notification; open it (step 9) to answer. To use a different mode, add e.g. `CREW_WORKER_PERMISSION_MODE=acceptEdits` to `~/.config/crew/env`.
 4. moved the item to `coding`.
 
+Running `crew agent start` again on an item that already has an agent doesn't start a second one: it gives that agent the ticket again (now if it's free, when its turn ends if it's busy, or by reviving it if it's stale). Add `--prompt "…"` to say something extra with it.
+
 Useful options:
 
 ```sh
