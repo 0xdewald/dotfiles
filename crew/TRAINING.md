@@ -5,6 +5,7 @@ A hands-on walkthrough of crew, the local board for running several Claude agent
 It takes about 20 minutes. By the end you'll have:
 - two agents, each in its own checkout and branch,
 - sent one of them a message,
+- answered the questions an agent put on the board,
 - opened it in Neovim, reviewed its changes and sent it review comments,
 - moved its work through the stages, and cleaned up.
 
@@ -22,6 +23,7 @@ For the reference of every command, see [README.md](README.md). For the Neovim s
 | **Slot** | A separate checkout of a repo that one agent works in. It's a normal `git clone`, not your own working copy, so the agent can switch branches without touching your work. |
 | **Agent** | A Claude session crew started for a work item, with a generated name like "Sneaky Sprockets". It runs in the background in its slot. |
 | **Message** | A note for an agent. It waits ("pending") until the agent is free, then gets delivered. |
+| **Decision** | A question an agent put on the board for you, with the options it sees, the one it recommends and why. |
 | **Comment** | A review comment on a line of the agent's code. It's stored on the board and sent to the agent. |
 
 ---
@@ -253,12 +255,13 @@ crew agent ls
 ```
 
 ```
-ID  NAME              STATUS    STAGE   BRANCH          SLOT      MSGS  LAST
-1   Sneaky Sprockets  working   coding  agent/PROJ-123  slot-one  0     -
-2   Lazy Muffins      idle      coding  agent/session…  slot-two  0     I found it in config/session.ts…
+ID  NAME              STATUS    STAGE   BRANCH          SLOT      MSGS  DECISIONS  LAST
+1   Sneaky Sprockets  working   coding  agent/PROJ-123  slot-one  0     0          -
+2   Lazy Muffins      idle      coding  agent/session…  slot-two  0     0          I found it in config/session.ts…
 ```
 
-- **STATUS:** `starting` (just launched), `working` (busy), `idle` (finished its turn, waiting for you), `needs-input` (asking a question), `stale` (left idle too long, see below), `stopped`.
+- **STATUS:** `starting` (just launched), `working` (busy), `idle` (finished its turn, waiting for you), `needs-input` (asking a question), `awaiting-decision` (it put questions on the board, see step 8½), `stale` (left idle too long, see below), `stopped`.
+- **DECISIONS:** how many of its questions are waiting for your answer.
 
 **Stale agents.** An agent that sits idle (or waiting for input) for more than 2 hours goes **stale**: crew stops its background process so it isn't left running for nothing. It keeps its slot, branch and conversation, and doesn't run again, even when you message it, until you revive it:
 
@@ -318,6 +321,59 @@ crew msg ls --to "$AGENT"
 Several messages waiting for the same agent are delivered together as one.
 
 From Neovim: in the dashboard (`Space m m`), select the agent and press `Ctrl-s`.
+
+---
+
+## 8½. Answer an agent's decisions
+
+Agents don't ask you things in chat. When an agent needs a decision, it puts each question on the board (with the options it sees, the one it recommends and why) and ends its turn. Its status becomes `awaiting-decision` and you get one notification: "crew: Sneaky Sprockets has 2 decisions". It doesn't go stale while it waits.
+
+It knows to do this because crew gives every worker its tools (the crew MCP server) and short instructions each time it starts or resumes. Nothing to set up.
+
+**See what's waiting:**
+
+```sh
+crew decision ls
+```
+
+```
+ID  STATUS  AGENT             ITEM  QUESTION                RECOMMENDED  ANSWER
+3   open    Sneaky Sprockets  1     Keep the v1 endpoint?   keep it      -
+4   open    Sneaky Sprockets  1     Which flag name?        --fast       -
+```
+
+**Read one in full** (options, recommendation, why):
+
+```sh
+DECISION=3                         # ← change
+crew decision show $DECISION
+```
+
+**Answer.** Take the agent's recommendation, or write your own answer:
+
+```sh
+crew decision answer 3 --accept                                   # ← change: use its recommendation
+crew decision answer 4 "Use --quick, it matches the old script"   # ← change: your own answer
+```
+
+The agent hears nothing until **all** its open decisions are answered. Then it gets every answer together as one message and carries on:
+
+```
+Answers to your decisions:
+1. Keep the v1 endpoint?
+   → keep it
+2. Which flag name?
+   → Use --quick, it matches the old script
+```
+
+A question that no longer matters: `crew decision cancel 4`. Other filters: `crew decision ls --agent "Sneaky Sprockets"`, `crew decision ls --status all`.
+
+**From Neovim:** press `Space m d`. It lists the open decisions of every agent, with the options, the recommendation and the reason on the right. Press Enter on one and choose:
+- `✓ keep it (recommended)`, the agent's recommendation,
+- one of its other options,
+- `Write my own answer…` to type one.
+
+In the dashboard (`Space m m`), agents with open decisions show `? 2`, and `Ctrl-d` on an agent answers just that agent's decisions.
 
 ---
 
@@ -442,6 +498,7 @@ crew event ls | tail -20
 | `branch agent/X is locked by slot Y` | Another agent has that branch. Stop it (`crew agent stop …`) or use another branch. |
 | `no free slot` | All slots are busy. Stop an agent, or add a slot (step 3). |
 | An agent stays `starting` | It hasn't finished its first turn yet, or the hooks aren't registered. Check with `jq '.hooks | keys' ~/.claude/settings.json`, and run `~/dotfiles/install.sh hooks` if `Stop` is missing. |
+| An agent stays `awaiting-decision` | It's waiting on your answers: `crew decision ls` or `Space m d`. |
 | A message stays `pending` | The agent is still busy, or open in Neovim: it's delivered when the agent finishes its turn. If the agent is `stale`, revive it: `crew agent revive <name>`. |
 | `warning: JIRA_… not set` | Only the key was stored. Connect Jira (step 2) or paste the details as text. |
 
@@ -477,6 +534,7 @@ crew agent start ITEM [--slot S] [--prompt "…"] [--model M]
 crew agent ls  |  crew agent show NAME  |  crew agent stop NAME
 crew agent revive NAME [--prompt "…"]  |  crew agent rm NAME|all [--force]
 crew msg post --to NAME "…"  |  crew msg ls --to NAME
+crew decision ls  |  crew decision answer N --accept  |  crew decision answer N "…"
 
 # review and progress
 crew comment ls --branch agent/x  |  crew comment resolve N
@@ -484,7 +542,8 @@ crew item move N pushed|reviewing|coding|pr-draft|closed
 crew event ls | tail
 
 # Neovim
-Space m m   dashboard (Enter peek · Ctrl-t take over · Ctrl-s message · Ctrl-r revive · Ctrl-x stop)
+Space m m   dashboard (Enter peek · Ctrl-t take over · Ctrl-s message · Ctrl-d decisions · Ctrl-r revive · Ctrl-x stop)
+Space m d   answer agents' decisions (Enter: recommendation, another option, or your own)
 Space m b   send the open agent back to the background (quitting Neovim does this too)
 Space r v / r V / r N   diff last turn / uncommitted / commit range
 Space r c / r s         comment / send

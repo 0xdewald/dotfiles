@@ -23,7 +23,7 @@ dotfiles/
     └── lua/
         ├── workspace.lua   # :Workspace, tab-per-repo sessions, tabline
         ├── review.lua      # review comments on agent changes, sent to Claude
-        ├── crew.lua        # crew client: agent dashboard, open an agent, route review comments
+        ├── crew.lua        # crew client: agent dashboard, decisions, open an agent, route review comments
         ├── agent.lua       # Claude per folder/workspace: auto-start, resume, sessions; keeps its window in place
         └── plugins/
             ├── ui.lua      # theme, picker, statusline, git, motions
@@ -86,12 +86,13 @@ A local board for running several Claude agents side by side, each in its own ch
 What works so far (milestone 1):
 - A slot is the agent's own checkout, separate from yours. Create one with `crew slot add slot-one ~/agents/slot-one/core --clone <repo url>` (or clone it yourself and leave out `--clone`), then `crew slot trust slot-one` once so Claude may work there. crew gives each slot its own Claude permissions (`.claude/settings.local.json`, kept out of git): read and edit its own slot, never the other slots, work in the checkout instead of a worktree, commit and push `agent/…` branches but never `main`/`master`/`develop` or with force.
 - `crew ticket add "read jira ticket VD-123 …"`, `crew item new --ticket 1`, `crew item move 1 queued`, then `crew agent start 1` starts a background Claude on `agent/<ticket>` in a free slot, with its own ports and process-name prefix.
-- `Space mm` opens the crew dashboard: agents with status, stage, branch and last message, refreshed every few seconds. Enter peeks at it in a floating panel (live if it's running, read-only if not; closing leaves it running), `Ctrl-t` takes it over in the Claude side panel. `Ctrl-s` sends it a message, `Ctrl-r` revives a stale one, `Ctrl-x` stops it.
+- `Space mm` opens the crew dashboard: agents with status, stage, branch and last message, refreshed every few seconds. Enter peeks at it in a floating panel (live if it's running, read-only if not; closing leaves it running), `Ctrl-t` takes it over in the Claude side panel. `Ctrl-s` sends it a message, `Ctrl-d` answers its decisions, `Ctrl-r` revives a stale one, `Ctrl-x` stops it.
 - Taking over a busy agent asks first, since it interrupts the agent's turn. Workers run in auto permission mode (`CREW_WORKER_PERMISSION_MODE` to change).
 - `Space mb` sends the open agent back to the background, continuing where it left off if it was mid-turn. Quitting Neovim, closing its Claude split or opening another agent does the same, so an agent never stops because Neovim closed.
 - Agents left idle for 2 hours (`CREW_STALE_AFTER`) go stale: their background process stops and messages wait until `crew agent revive <name>`. `crew agent rm <name>|all` clears agents off the board.
 - Review comments (`Space rc`, `Space rs`) on an agent's branch go to the board, which hands them to that agent: straight into the Claude split if it's open in Neovim, otherwise by resuming it in the background.
 - When an agent finishes a turn you get a macOS notification ("crew: Fuzzy Muffins is done").
+- Decisions on the board (milestone 1.5): agents don't bury questions in chat. Each worker gets crew's MCP tools and short standing instructions on every start and resume; it puts each question on the board (`ask_decision`: options, its recommendation and why) and ends its turn. It shows as `awaiting-decision` (never goes stale) and you get one notification ("crew: Fuzzy Muffins has 2 decisions"). `Space md` lists the open decisions: Enter offers the recommendation, the other options or your own answer. Once its last one is answered, the agent gets all the answers as one message. In the dashboard `? N` marks agents with open decisions and `Ctrl-d` answers that agent's. From the shell: `crew decision ls`, `crew decision answer 3 --accept`.
 - `Space rN` reviews a range of commits.
 
 Not yet: the tech lead, plan reviews, the reviewer agent and the director chat (milestones 2 to 4).
@@ -206,7 +207,7 @@ Leader is **Space**. Press it and wait to see everything in which-key.
 | `Space as` (visual) / `ab` / `aa` / `ad` | Claude: send selection / add buffer / accept diff / deny diff |
 | `Space rc` / `rl` / `rd` / `rr` / `rs` | Review: comment (line or selection) / list / delete / resolve / send to Claude |
 | `Space rN` | Review: diff a range of commits (last n, or since a commit/branch) |
-| `Space mm` / `mb` / `ms` | Crew: dashboard of agents / send the open agent to the background / board status |
+| `Space mm` / `md` / `mb` / `ms` | Crew: dashboard of agents / answer agents' decisions / send the open agent to the background / board status |
 | `Space rS` / `rt` | Comments: send all unresolved again / hide-show. Closing a diff or quitting with unsent comments reminds you. |
 | `Space rv` / `rV` / `rq` | Review: diff last agent turn / diff all vs HEAD / close diff |
 
