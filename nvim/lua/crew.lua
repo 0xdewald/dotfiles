@@ -149,7 +149,7 @@ end
 
 local function status_hl(s)
   return ({ working = "DiagnosticInfo", idle = "DiagnosticOk", ["needs-input"] = "DiagnosticWarn",
-    stopped = "Comment", stale = "Comment", starting = "DiagnosticHint" })[s] or "Normal"
+    ["awaiting-decision"] = "DiagnosticError", stopped = "Comment", stale = "Comment", starting = "DiagnosticHint" })[s] or "Normal"
 end
 
 -- Peek: a floating panel over the editor to read an agent, check it and leave it running.
@@ -157,7 +157,9 @@ end
 -- panel): you can watch it, answer a prompt or type to it, and closing the float leaves it running
 -- in the background. One that isn't running (stale, stopped) shows its conversation read-only.
 local function title_for(a)
-  return (" %s · %s · %s "):format(a.name, a.status or "?", a.branch or "-")
+  local n = a.decisions or 0
+  local asks = n > 0 and (" · %d decision%s"):format(n, n == 1 and "" or "s") or ""
+  return (" %s · %s · %s%s "):format(a.name, a.status or "?", a.branch or "-", asks)
 end
 
 local function float_opts(a, footer)
@@ -238,9 +240,100 @@ function M.peek(a)
   end))
 end
 
+-- Answer decision d: the agent's recommendation, one of its other options, or your own words.
+-- The board holds the answers until the agent's last open decision is answered, then sends them
+-- all as one message. done runs after a successful answer.
+function M.answer(d, done)
+  local choices = {}
+  if d.recommendation and d.recommendation ~= "" then
+    table.insert(choices, { label = "✓ " .. d.recommendation .. " (recommended)", accept = true })
+  end
+  for _, o in ipairs(d.options or {}) do
+    if o ~= d.recommendation then table.insert(choices, { label = o, answer = o }) end
+  end
+  table.insert(choices, { label = "Write my own answer…" })
+  local function send(args, stdin)
+    local r, e = M.run(args, stdin)
+    if not r then return notify(e, vim.log.levels.ERROR) end
+    if r.message then
+      notify(("answers sent to %s (%s)"):format(r.message.to, r.message.status))
+    else
+      notify(("decision %d answered; %s gets the answers once its other decisions are answered"):format(d.id, d.agent))
+    end
+    if done then done() end
+  end
+  local id = tostring(d.id)
+  vim.ui.select(choices, { prompt = d.agent .. ": " .. d.question, format_item = function(c) return c.label end }, function(c)
+    if not c then return end
+    if c.accept then return send({ "decision", "answer", id, "--accept" }) end
+    -- answers go on stdin, so one that looks like a flag (--fast) stays an answer
+    if c.answer then return send({ "decision", "answer", id, "-" }, c.answer) end
+    vim.ui.input({ prompt = "Answer for " .. d.agent .. ": " }, function(text)
+      if text and vim.trim(text) ~= "" then send({ "decision", "answer", id, "-" }, text) end
+    end)
+  end)
+end
+
+local function decision_preview(d)
+  local lines = { "# " .. d.question, "", ("- from **%s** · item %s · decision %d"):format(d.agent, d.item_id or "-", d.id), "" }
+  if #(d.options or {}) > 0 then
+    vim.list_extend(lines, { "## Options", "" })
+    for _, o in ipairs(d.options) do
+      table.insert(lines, "- " .. o .. (o == d.recommendation and "  **(recommended)**" or ""))
+    end
+    table.insert(lines, "")
+  end
+  if d.recommendation ~= "" then vim.list_extend(lines, { "## Recommendation", "", d.recommendation, "" }) end
+  if d.reason ~= "" then
+    vim.list_extend(lines, { "## Why", "" })
+    vim.list_extend(lines, vim.split(d.reason, "\n"))
+  end
+  return lines
+end
+
+-- Space md: the open decisions agents put on the board (only agent's, when given). Enter answers
+-- one; the list comes back while any are left.
+function M.decisions(agent)
+  local args = { "decision", "ls" }
+  if agent then vim.list_extend(args, { "--agent", tostring(agent.id) }) end
+  local ds, err = M.run(args)
+  if not ds then return notify(err, vim.log.levels.WARN) end
+  if #ds == 0 then return notify(agent and (agent.name .. " has no open decisions") or "no open decisions") end
+  Snacks.picker.pick({
+    title = agent and ("Decisions · " .. agent.name) or "Crew decisions",
+    finder = function()
+      return vim.tbl_map(function(d)
+        return { decision = d, text = d.agent .. " " .. d.question .. " " .. table.concat(d.options or {}, " ") }
+      end, M.run(args) or {})
+    end,
+    format = function(item)
+      local d = item.decision
+      return {
+        { ("%-20s "):format(d.agent), "Title" },
+        { (d.question:gsub("%s+", " ")), "Normal" },
+        { d.recommendation ~= "" and ("  → " .. d.recommendation) or "", "Comment" },
+      }
+    end,
+    preview = function(ctx)
+      ctx.preview:set_lines(decision_preview(ctx.item.decision))
+      ctx.preview:highlight({ ft = "markdown" })
+    end,
+    confirm = function(p, item)
+      p:close()
+      if not item then return end
+      vim.schedule(function()
+        M.answer(item.decision, function()
+          local left = M.run(args)
+          if left and #left > 0 then M.decisions(agent) end
+        end)
+      end)
+    end,
+  })
+end
+
 -- Space mm: the agents on the board. Enter peeks at one in a floating panel, Ctrl-t takes it over
--- in the Claude side panel, Ctrl-s sends it a message, Ctrl-r revives a stale or stopped one,
--- Ctrl-x stops it.
+-- in the Claude side panel, Ctrl-s sends it a message, Ctrl-d answers its decisions, Ctrl-r
+-- revives a stale or stopped one, Ctrl-x stops it.
 function M.dashboard()
   local agents, err = M.run({ "agent", "ls" })
   if not agents then return notify(err, vim.log.levels.WARN) end
@@ -258,9 +351,10 @@ function M.dashboard()
       return {
         { mine and "● " or "  ", "DiagnosticOk" },
         { ("%-20s "):format(a.name), "Title" },
-        { ("%-12s "):format(a.status or ""), status_hl(a.status) },
+        { ("%-18s "):format(a.status or ""), status_hl(a.status) },
         { ("%-12s "):format(a.stage or "-"), "Comment" },
         { ("%-28s "):format(a.branch or ""), "SnacksPickerGitBranch" },
+        { (a.decisions or 0) > 0 and ("? %d "):format(a.decisions) or "", "DiagnosticError" },
         { (a.pending or 0) > 0 and ("✉ %d "):format(a.pending) or "", "DiagnosticWarn" },
         { ((a.last_message or ""):gsub("%s+", " "):sub(1, 80)), "Comment" },
       }
@@ -272,7 +366,9 @@ function M.dashboard()
         ("- status: %s · stage: %s · role: %s"):format(a.status or "?", a.stage or "-", a.role or "?"),
         ("- branch: %s · slot: %s (ports +%d)"):format(a.branch or "-", a.slot or "-", a.port_offset or 0),
         "- folder: " .. vim.fn.fnamemodify(a.dir or "", ":~"),
-        "- session: " .. (a.session_id or ""), "",
+        "- session: " .. (a.session_id or ""),
+        (a.decisions or 0) > 0 and ("- **%d open decision%s** (Ctrl-d to answer)"):format(a.decisions, a.decisions == 1 and "" or "s") or "",
+        "",
         "## Last message", "",
       }
       vim.list_extend(lines, vim.split(a.last_message ~= "" and a.last_message or "(none yet)", "\n"))
@@ -292,6 +388,11 @@ function M.dashboard()
           if m then notify(("message %s for %s"):format(m.status, item.agent.name)) else notify(e, vim.log.levels.ERROR) end
           p:refresh()
         end)
+      end,
+      crew_decisions = function(p, item)
+        if not item then return end
+        p:close()
+        vim.schedule(function() M.decisions(item.agent) end)
       end,
       crew_take_over = function(p, item)
         p:close()
@@ -313,6 +414,7 @@ function M.dashboard()
     },
     win = { input = { keys = {
       ["<c-s>"] = { "crew_message", mode = { "n", "i" }, desc = "Message agent" },
+      ["<c-d>"] = { "crew_decisions", mode = { "n", "i" }, desc = "Answer the agent's decisions" },
       ["<c-x>"] = { "crew_stop", mode = { "n", "i" }, desc = "Stop agent" },
       ["<c-r>"] = { "crew_revive", mode = { "n", "i" }, desc = "Revive a stale or stopped agent" },
       ["<c-t>"] = { "crew_take_over", mode = { "n", "i" }, desc = "Take over in the Claude side panel" },
@@ -352,6 +454,7 @@ end
 
 function M.setup()
   vim.keymap.set("n", "<leader>mm", M.dashboard, { desc = "Crew dashboard" })
+  vim.keymap.set("n", "<leader>md", function() M.decisions() end, { desc = "Crew decisions" })
   vim.keymap.set("n", "<leader>ms", function()
     local s = M.run({ "status" })
     if not s then return notify("not available", vim.log.levels.WARN) end

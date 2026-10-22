@@ -220,7 +220,7 @@ func TestDecisionCLI(t *testing.T) {
 			Status string `json:"status"`
 		} `json:"message"`
 	}
-	mustJSON(t, &r, "", "decision", "answer", "1", "drop", "it")
+	mustJSON(t, &r, "drop it\n", "decision", "answer", "1", "-") // stdin: answers that look like flags stay answers
 	if r.Decision.Answer != "drop it" || r.Message != nil {
 		t.Fatalf("%+v", r)
 	}
