@@ -134,6 +134,7 @@ func (f *Fake) Calls(t *testing.T) []FakeCall {
 
 func newBoard(t *testing.T) (*Board, *recExec) {
 	t.Helper()
+	t.Setenv("CREW_CONFIG_DIR", t.TempDir()) // never your real ~/.crew
 	b, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

@@ -250,12 +250,16 @@ func (a *app) textArg(pos []string) (string, error) {
 func loadConfig() {
 	path := os.Getenv("CREW_CONFIG")
 	if path == "" {
-		dir := os.Getenv("XDG_CONFIG_HOME")
-		if dir == "" {
-			home, _ := os.UserHomeDir()
-			dir = filepath.Join(home, ".config")
+		path = filepath.Join(board.ConfigDir(), "env")
+		if _, err := os.Stat(path); err != nil {
+			// where it used to live
+			dir := os.Getenv("XDG_CONFIG_HOME")
+			if dir == "" {
+				home, _ := os.UserHomeDir()
+				dir = filepath.Join(home, ".config")
+			}
+			path = filepath.Join(dir, "crew", "env")
 		}
-		path = filepath.Join(dir, "crew", "env")
 	}
 	f, err := os.Open(path)
 	if err != nil {

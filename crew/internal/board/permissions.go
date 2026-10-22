@@ -95,6 +95,7 @@ func (b *Board) WriteSlotPermissions() ([]string, error) {
 				return written, err
 			}
 			gitExclude(repo, PermissionsFile)
+			linkSkills(repo)
 			written = append(written, file)
 		}
 	}
@@ -172,5 +173,5 @@ func gitExclude(repo, path string) {
 	if len(raw) > 0 && !strings.HasSuffix(string(raw), "\n") {
 		f.WriteString("\n")
 	}
-	f.WriteString("# crew: per-slot Claude permissions\n" + path + "\n")
+	f.WriteString("# crew (per-slot Claude settings and skills)\n" + path + "\n")
 }

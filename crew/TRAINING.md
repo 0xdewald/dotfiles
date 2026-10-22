@@ -65,16 +65,18 @@ JIRA_BASE_URL="https://your-company.atlassian.net"   # ← change
 JIRA_EMAIL="you@your-company.com"                    # ← change
 JIRA_API_TOKEN="paste-your-token-here"               # ← change (https://id.atlassian.com/manage-profile/security/api-tokens)
 
-mkdir -p ~/.config/crew
-cat > ~/.config/crew/env <<EOF
+mkdir -p ~/.crew
+cat > ~/.crew/env <<EOF
 JIRA_BASE_URL=$JIRA_BASE_URL
 JIRA_EMAIL=$JIRA_EMAIL
 JIRA_API_TOKEN=$JIRA_API_TOKEN
 EOF
-chmod 600 ~/.config/crew/env
+chmod 600 ~/.crew/env
 ```
 
 This file lives outside the dotfiles repo, so the token is never committed.
+
+`~/.crew` is your own crew config, outside every repo. Besides `env` it holds `skills/`: Claude Code skills you want crew's agents to have (for example a code review skill), one folder per skill with a `SKILL.md`. crew links them into each slot's checkout, kept out of git, so its agents can use them and your own Claude sessions don't change.
 
 ---
 
@@ -226,7 +228,7 @@ started Sneaky Sprockets in /Users/you/agents/slot-one/my-service on agent/PROJ-
 What just happened:
 1. crew picked a free slot (or use `--slot slot-two` to choose one),
 2. created and checked out `agent/PROJ-123` in that slot, locked so no other slot can take the same branch,
-3. started a background Claude there, named "Sneaky Sprockets", with your prompt as its first message. Workers run in **auto mode**: routine actions (reading the ticket, editing, running tests, committing) go ahead without asking, and anything risky still asks. When an agent asks, it shows as `needs-input` and you get a notification; open it (step 9) to answer. To use a different mode, add e.g. `CREW_WORKER_PERMISSION_MODE=acceptEdits` to `~/.config/crew/env`.
+3. started a background Claude there, named "Sneaky Sprockets", with your prompt as its first message. Workers run in **auto mode**: routine actions (reading the ticket, editing, running tests, committing) go ahead without asking, and anything risky still asks. When an agent asks, it shows as `needs-input` and you get a notification; open it (step 9) to answer. To use a different mode, add e.g. `CREW_WORKER_PERMISSION_MODE=acceptEdits` to `~/.crew/env`.
 4. moved the item to `coding`.
 
 Running `crew agent start` again on an item that already has an agent doesn't start a second one: it gives that agent the ticket again (now if it's free, when its turn ends if it's busy, or by reviving it if it's stale). Add `--prompt "…"` to say something extra with it.
@@ -273,7 +275,7 @@ crew agent revive "$AGENT"                                   # back in the backg
 crew agent revive "$AGENT" --prompt "Carry on with the tests."   # ← change: or with a new instruction
 ```
 
-Opening it in Neovim (step 9) revives it too. To change the limit, add `CREW_STALE_AFTER=4h` (or `90m`, …) to `~/.config/crew/env`.
+Opening it in Neovim (step 9) revives it too. To change the limit, add `CREW_STALE_AFTER=4h` (or `90m`, …) to `~/.crew/env`.
 - **LAST:** the agent's last message, recorded when it finishes a turn. You also get a macOS notification: "crew: Lazy Muffins is done".
 
 Details for one agent:
@@ -513,7 +515,7 @@ crew event ls | tail -20
 |---|---|
 | The board | `~/.local/share/crew/crew.db` (change with `CREW_HOME`) |
 | Documents (plans, reviews) | `~/.local/share/crew/docs/` |
-| Jira settings | `~/.config/crew/env` |
+| Jira settings | `~/.crew/env` |
 | Agents' checkouts | wherever you created the slots, e.g. `~/agents/` |
 
 **Start over with an empty board.** This deletes all crew history: tickets, items, messages and comments. Agents' conversations and slot folders aren't touched.

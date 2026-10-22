@@ -105,6 +105,7 @@ func (b *Board) runBackground(a *Agent, text string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	linkSkills(a.Dir) // skills added to ~/.crew since the slot was set up
 	args := startArgs(a.Name, crew, permissionMode(a.Role), a.Model, text)
 	if sid, ok := b.ConversationID(a); ok {
 		// the MCP config and instructions aren't part of the conversation: give them again

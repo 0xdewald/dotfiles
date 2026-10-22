@@ -149,8 +149,14 @@ POST `/api/items/{id}/move` `{stage, force}`, `/api/messages`
 
 - Board: `$CREW_HOME` (default `~/.local/share/crew`): `crew.db`,
   `docs/<item>/<kind>-v<n>.md`, and `agents/<id>/mcp.json`.
-- Secrets: `~/.config/crew/env` (or `$CREW_CONFIG`), `KEY=VALUE` lines, never
-  in the repo. Real environment variables win.
+- Your config: `~/.crew` (or `$CREW_CONFIG_DIR`), never in a repo.
+  - `env`: secrets, `KEY=VALUE` lines (or `$CREW_CONFIG`; `~/.config/crew/env`
+    still works). Real environment variables win.
+  - `skills/<name>/SKILL.md`: Claude Code skills for crew's agents. crew links
+    each into every slot repo's `.claude/skills/` (kept out of git through
+    `.git/info/exclude`) when it sets up a slot and whenever it starts or
+    resumes an agent, so agents get them and your own sessions don't. A skill
+    the repo has itself wins. Remove one from `~/.crew/skills` and its links go.
 
 | Variable | Use |
 | --- | --- |
@@ -158,7 +164,8 @@ POST `/api/items/{id}/move` `{stage, force}`, `/api/messages`
 | `CREW_CLAUDE` | claude binary (default `claude`) |
 | `CREW_NO_NOTIFY=1` | no macOS notifications |
 | `CREW_STALE_AFTER` | how long an agent may sit idle before it goes stale (default `2h`) |
-| `CREW_CONFIG` | config file path |
+| `CREW_CONFIG_DIR` | your config folder (default `~/.crew`) |
+| `CREW_CONFIG` | env file path |
 | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` | fetch tickets via Jira REST v3 |
 | `CREW_AGENT_ID` | set for agents; identifies the caller to `crew mcp` and `msg post` |
 
