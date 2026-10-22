@@ -1,6 +1,6 @@
 # crew
 
-New here? [TRAINING.md](TRAINING.md) walks through crew step by step, with copy-paste blocks.
+New here? [TRAINING.md](TRAINING.md) walks through crew step by step, with copy-paste blocks. How crew compares to other tools: [ALTERNATIVES.md](ALTERNATIVES.md).
 
 A local work board for a crew of Claude Code agents. One Go binary keeps the
 state (tickets, work items, agents, slots, branch locks, documents, comments,
