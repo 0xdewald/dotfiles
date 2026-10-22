@@ -330,7 +330,7 @@ nvim
 Press `Space m m` and move to the agent. You have two ways to open it:
 
 **Enter: peek.** A floating panel over the editor, with the agent's name, status and branch in its border.
-- A running agent shows **live**: watch it, answer a permission prompt, or type to it. Close the panel (`Esc Esc`, then `q`) and it carries on in the background. Nothing is stopped or moved, and your own Claude side panel isn't touched.
+- A running agent shows **live**: watch it, answer a permission prompt, or type to it. Don't press `Esc` in the panel: it goes to Claude and interrupts the agent's turn. Close the panel with `Ctrl-q` (or `Ctrl-\` `Ctrl-n`, then `q`) and it carries on in the background. Nothing is stopped or moved, and your own Claude side panel isn't touched.
 - A stale or stopped agent shows its **conversation read-only**: `r` revives it, `t` takes it over, `q` closes.
 
 **Ctrl-t: take over.** The agent moves into the Claude side panel, connected to Neovim: it sees your file and selection, and its edits show as diffs. Use this to work with it closely. If it's in the middle of a turn, Neovim asks first, because taking over interrupts that turn. When you take it over, Neovim:
