@@ -835,3 +835,26 @@ func TestStartGivesTheTicket(t *testing.T) {
 		t.Fatalf("first prompt:\n%s", p)
 	}
 }
+
+// Starting an item that already has an agent gives that agent the work again instead of failing
+func TestStartAgainResends(t *testing.T) {
+	b, _, f, _, _, it := startSetup(t)
+	a, _ := b.StartAgent(StartOpts{ItemID: it.ID})
+	hook(t, b, "Stop", a.SessionID, writeTranscript(t, "idle now"))
+	a2, m, err := b.StartOrResend(StartOpts{ItemID: it.ID, Prompt: "Start with the tests."})
+	if err != nil || a2.ID != a.ID || m == nil || m.Status != "delivered" {
+		t.Fatalf("resend to idle agent: %v %+v %+v", err, a2, m)
+	}
+	args := f.Calls(t)[len(f.Calls(t))-1].Args
+	if p := args[len(args)-1]; !strings.Contains(p, "Jira ticket: VD-1") || !strings.HasSuffix(p, "Start with the tests.") {
+		t.Fatalf("resent prompt: %q", p)
+	}
+	// busy: waits for the end of its turn
+	hook(t, b, "UserPromptSubmit", a.SessionID, "")
+	if _, m, _ = b.StartOrResend(StartOpts{ItemID: it.ID}); m == nil || m.Status != "pending" {
+		t.Fatalf("resend to busy agent: %+v", m)
+	}
+	if as, _ := b.Agents(); len(as) != 1 {
+		t.Fatalf("started a second agent: %d", len(as))
+	}
+}

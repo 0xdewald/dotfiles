@@ -407,11 +407,21 @@ func (a *app) agent(sub string, args []string) error {
 				return err
 			}
 		}
-		ag, err := a.b.StartAgent(board.StartOpts{ItemID: id, Slot: *slot, Role: *role, Model: *model, Name: *name, Prompt: *prompt})
+		ag, resent, err := a.b.StartOrResend(board.StartOpts{ItemID: id, Slot: *slot, Role: *role, Model: *model, Name: *name, Prompt: *prompt})
 		if err != nil {
 			return err
 		}
-		return a.out(ag, func() { fmt.Fprintf(a.stdout, "started %s in %s on %s\n", ag.Name, ag.Dir, ag.Branch) })
+		return a.out(ag, func() {
+			if resent == nil {
+				fmt.Fprintf(a.stdout, "started %s in %s on %s\n", ag.Name, ag.Dir, ag.Branch)
+				return
+			}
+			when := "it gets it now"
+			if resent.Status == "pending" {
+				when = "it gets it when its current turn ends"
+			}
+			fmt.Fprintf(a.stdout, "item %d already has %s (%s): sent it the ticket again; %s\n", id, ag.Name, ag.Status, when)
+		})
 	case "ls":
 		if _, err := parse(flag.NewFlagSet("agent ls", flag.ContinueOnError), args, 0); err != nil {
 			return err

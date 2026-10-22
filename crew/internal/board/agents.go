@@ -469,3 +469,30 @@ func (b *Board) workBrief(it *Item) string {
 	}
 	return sb.String()
 }
+
+// StartOrResend starts an agent for the item, or, when the item already has one that isn't
+// stopped, gives that agent the work again: as a message (delivered now if it's free, else when
+// its turn ends), or by reviving it when it's stale. msg is set when it was resent.
+func (b *Board) StartOrResend(o StartOpts) (*Agent, *Message, error) {
+	item, err := b.Item(o.ItemID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if item.AgentID != nil {
+		if cur, err := b.AgentByID(*item.AgentID); err == nil && cur.Status != StatusStopped {
+			text := strings.TrimSpace(b.workBrief(item) + "\n\n" + o.Prompt)
+			if cur.Status == StatusStale {
+				a, err := b.Revive(cur.Name, text)
+				return a, &Message{To: cur.Name, Text: text, Status: "delivered"}, err
+			}
+			m, err := b.PostMessage(PostOpts{To: cur.Name, ItemID: item.ID, Kind: "work", Text: text})
+			if err != nil {
+				return nil, nil, err
+			}
+			a, err := b.AgentByID(cur.ID)
+			return a, m, err
+		}
+	}
+	a, err := b.StartAgent(o)
+	return a, nil, err
+}
