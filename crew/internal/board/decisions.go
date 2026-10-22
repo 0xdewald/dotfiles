@@ -198,7 +198,10 @@ func (b *Board) closeDecision(id int64, status, answer, by string) (*Decision, *
 	if err != nil {
 		return nil, nil, err
 	}
-	if cur != "open" {
+	// a cancelled question can still be answered after all (changed your mind): the answer goes
+	// out like any other; an answered one can't be answered twice
+	reopened := cur == "cancelled" && status == "answered"
+	if cur != "open" && !reopened {
 		return nil, nil, fmt.Errorf("decision %d is already %s", id, cur)
 	}
 	if _, err := tx.Exec(`UPDATE decisions SET status = ?, answer = ?, answered_by = ?, answered = ? WHERE id = ?`,
@@ -209,7 +212,11 @@ func (b *Board) closeDecision(id int64, status, answer, by string) (*Decision, *
 	if status == "cancelled" {
 		typ = "decision.cancel"
 	}
-	if err := b.event(tx, typ, &agentID, itemID, map[string]any{"decision_id": id, "by": by}); err != nil {
+	data := map[string]any{"decision_id": id, "by": by}
+	if reopened {
+		data["was"] = "cancelled"
+	}
+	if err := b.event(tx, typ, &agentID, itemID, data); err != nil {
 		return nil, nil, err
 	}
 	msgID, open, err := b.sendAnswersTx(tx, agentID, itemID, by)

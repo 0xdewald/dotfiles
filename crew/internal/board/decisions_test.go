@@ -211,3 +211,26 @@ func TestRejectDecision(t *testing.T) {
 		t.Fatalf("%v %+v", err, m)
 	}
 }
+
+// A cancelled question can still be answered (you changed your mind); it goes out on its own
+func TestAnswerCancelledDecision(t *testing.T) {
+	b, _, _, _, _, it := startSetup(t)
+	a, err := b.StartAgent(StartOpts{ItemID: it.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _ := b.AskDecision(a.ID, "Keep the README edits?", []string{"keep", "revert"}, "keep", "they're right")
+	if _, m, err := b.CancelDecision(d.ID); err != nil || m != nil {
+		t.Fatalf("cancel: %v %+v", err, m)
+	}
+	if _, _, err := b.CancelDecision(d.ID); err == nil {
+		t.Fatal("cancelled twice")
+	}
+	got, m, err := b.RejectDecision(d.ID, "Lets remove the changes", "you")
+	if err != nil || got.Status != "answered" || m == nil || m.Text != "Answers to your decisions:\n1. Keep the README edits?\n   → Rejected: keep. Lets remove the changes" {
+		t.Fatalf("%v %+v %+v", err, got, m)
+	}
+	if _, _, err := b.AnswerDecision(d.ID, "keep", "you"); err == nil {
+		t.Fatal("answered twice")
+	}
+}

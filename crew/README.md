@@ -115,7 +115,8 @@ Answers to your decisions:
 
 `crew decision answer ID TEXT` answers in your words, `--accept` with the
 agent's recommendation, and `--reject [REASON]` with "Rejected: <recommendation>.
-REASON". `crew decision answer` and `cancel` print (`--json`)
+REASON". A cancelled decision can still be answered later; an answered one can't be
+answered again. `crew decision answer` and `cancel` print (`--json`)
 `{"decision": {...}, "message": {...}|null}`; `message` is set once the
 answers were sent. A decision is `{id, agent_id, agent, item_id, question,
 options[], recommendation, reason, status (open|answered|cancelled), answer,
