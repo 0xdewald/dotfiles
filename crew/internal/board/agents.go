@@ -276,19 +276,12 @@ func (b *Board) StartAgent(o StartOpts) (*Agent, error) {
 		prompt = strings.TrimSpace(prompt + "\n\n" + combine(msgs))
 	}
 	a.Branch = item.Branch // not linked to the item until it runs
-	crew, err := b.crewArgs(a)
-	if err != nil {
-		b.DB.Exec(`UPDATE messages SET to_agent_id = NULL WHERE to_agent_id = ? AND status = 'pending'`, aid)
-		b.DB.Exec(`UPDATE slots SET leased_by = NULL WHERE leased_by = ?`, aid)
-		b.DB.Exec(`DELETE FROM branch_locks WHERE agent_id = ?`, aid)
-		b.DB.Exec(`DELETE FROM agents WHERE id = ?`, aid)
-		return nil, err
-	}
-	args := startArgs(name, crew, mode, o.Model, prompt)
-	var out string
+	var out, bg string
 	launched := time.Now()
-	out, err = b.Exec.Claude(dir, b.agentEnv(a), args...)
-	var bg string
+	crew, err := b.crewArgs(a)
+	if err == nil {
+		out, err = b.Exec.Claude(dir, b.agentEnv(a), startArgs(name, crew, mode, o.Model, prompt)...)
+	}
 	if err == nil {
 		if bg = parseBackgrounded(out); bg == "" {
 			err = fmt.Errorf("claude --bg: no session id in its output: %s", strings.TrimSpace(out))

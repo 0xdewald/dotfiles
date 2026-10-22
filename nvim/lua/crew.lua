@@ -366,11 +366,12 @@ function M.dashboard()
         ("- status: %s · stage: %s · role: %s"):format(a.status or "?", a.stage or "-", a.role or "?"),
         ("- branch: %s · slot: %s (ports +%d)"):format(a.branch or "-", a.slot or "-", a.port_offset or 0),
         "- folder: " .. vim.fn.fnamemodify(a.dir or "", ":~"),
-        "- session: " .. (a.session_id or ""),
-        (a.decisions or 0) > 0 and ("- **%d open decision%s** (Ctrl-d to answer)"):format(a.decisions, a.decisions == 1 and "" or "s") or "",
-        "",
+        "- session: " .. (a.session_id or ""), "",
         "## Last message", "",
       }
+      if (a.decisions or 0) > 0 then
+        table.insert(lines, 7, ("- **%d open decision%s** (Ctrl-d to answer)"):format(a.decisions, a.decisions == 1 and "" or "s"))
+      end
       vim.list_extend(lines, vim.split(a.last_message ~= "" and a.last_message or "(none yet)", "\n"))
       ctx.preview:set_lines(lines)
       ctx.preview:highlight({ ft = "markdown" })
