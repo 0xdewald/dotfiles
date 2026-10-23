@@ -210,3 +210,27 @@ func TestDashboard(t *testing.T) {
 		t.Fatalf("unnamed stream: %q", lines)
 	}
 }
+
+// crew's docs are built in and served for the dashboard's Guide tab
+func TestGuide(t *testing.T) {
+	_, _, srv := setup(t)
+	resp, _ := http.Get(srv.URL + "/api/guide")
+	var list []struct{ Name, Title string }
+	json.NewDecoder(resp.Body).Decode(&list)
+	resp.Body.Close()
+	if len(list) != 3 || list[0].Name != "TRAINING.md" {
+		t.Fatalf("%+v", list)
+	}
+	resp, _ = http.Get(srv.URL + "/api/guide/TRAINING.md")
+	var g struct{ Text string }
+	json.NewDecoder(resp.Body).Decode(&g)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.HasPrefix(g.Text, "#") {
+		t.Fatalf("%d %.80q", resp.StatusCode, g.Text)
+	}
+	for _, bad := range []string{"go.mod", "..%2Fgo.mod", "nope.md"} {
+		if resp, _ := http.Get(srv.URL + "/api/guide/" + bad); resp.StatusCode != 404 {
+			t.Fatalf("%s: %d", bad, resp.StatusCode)
+		}
+	}
+}

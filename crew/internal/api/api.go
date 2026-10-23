@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/0xdewald/dotfiles/crew"
 	"github.com/0xdewald/dotfiles/crew/internal/board"
 )
 
@@ -226,6 +227,14 @@ func Handler(b *board.Board) http.Handler {
 	}))
 	m.HandleFunc("GET /api/version", s.wrap(func(r *http.Request) (any, error) {
 		return map[string]string{"build": Build}, nil
+	}))
+	m.HandleFunc("GET /api/guide", s.wrap(func(r *http.Request) (any, error) { return crew.Guides, nil }))
+	m.HandleFunc("GET /api/guide/{name}", s.wrap(func(r *http.Request) (any, error) {
+		text, ok := crew.GuideText(r.PathValue("name"))
+		if !ok {
+			return nil, httpError{http.StatusNotFound, "no guide " + r.PathValue("name")}
+		}
+		return crew.Guide{Name: r.PathValue("name"), Text: text}, nil
 	}))
 	m.HandleFunc("GET /{$}", dashboard)
 	return m

@@ -138,8 +138,9 @@ default) and `answer_decision {id, answer | accept | reject (+ answer as the rea
 slot, pending messages, open decisions, last message), the message log (who sent what to whom, and
 whether the mailman or a resume delivered it), the decision log (open and answered, with whether
 you accepted or rejected the recommendation) and the event log. It updates live from the event
-stream. Open a tab directly with `#agents`, `#messages`, `#decisions` or `#events`. It's
-read-only: answer decisions with `crew decision answer` or `Space m d`.
+stream. The Guide tab shows this README, TRAINING.md and ALTERNATIVES.md, built into the
+binary so they match the running build. Open a tab directly with `#agents`, `#messages`,
+`#decisions`, `#events` or `#guide/TRAINING.md`. It's read-only: answer decisions with `crew decision answer` or `Space m d`.
 
 ## HTTP API
 
