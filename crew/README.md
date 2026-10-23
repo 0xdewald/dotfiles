@@ -132,7 +132,19 @@ number of open ones.
 the agent to end its turn), `list_decisions {agent?, status?}` (open by
 default) and `answer_decision {id, answer | accept | reject (+ answer as the reason)}` (for the director).
 
+## Dashboard
+
+`crew serve` also serves a dashboard at http://127.0.0.1:7767/: your agents (status, attached,
+slot, pending messages, open decisions, last message), the message log (who sent what to whom, and
+whether the mailman or a resume delivered it), the decision log (open and answered, with whether
+you accepted or rejected the recommendation) and the event log. It updates live from the event
+stream. Open a tab directly with `#agents`, `#messages`, `#decisions` or `#events`. It's
+read-only: answer decisions with `crew decision answer` or `Space m d`.
+
 ## HTTP API
+
+`GET /api/log?limit=N` returns the newest N events (oldest first, default 300).
+`/api/events?unnamed=1` streams events without SSE event names, for browsers.
 
 GET `/api/status`, `/api/items[?stage=]`, `/api/items/{id}`, `/api/agents`,
 `/api/agents/{id|name}`, `/api/agents/by-branch?branch=&repo=`, `/api/slots`,

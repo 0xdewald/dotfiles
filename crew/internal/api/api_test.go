@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -159,5 +160,53 @@ func TestDecisions(t *testing.T) {
 	json.Unmarshal(out["message"], &m)
 	if c != 200 || !strings.Contains(m.Text, "1. Keep it?\n   → yes\n2. Name?\n   → crew") {
 		t.Fatal(c, string(out["message"]))
+	}
+}
+
+// The dashboard page, the event log it starts from, and the unnamed stream it follows
+func TestDashboard(t *testing.T) {
+	b, _, srv := setup(t)
+	resp, err := http.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") || !strings.Contains(string(page), "/api/log") {
+		t.Fatalf("%d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	if resp, _ := http.Get(srv.URL + "/nope"); resp.StatusCode != 404 {
+		t.Fatal("unknown paths should 404, not show the dashboard:", resp.StatusCode)
+	}
+
+	for i := 0; i < 5; i++ {
+		b.Event("test.ping", nil, nil, map[string]any{"n": i})
+	}
+	resp, _ = http.Get(srv.URL + "/api/log?limit=3")
+	var evs []board.Event
+	json.NewDecoder(resp.Body).Decode(&evs)
+	resp.Body.Close()
+	last, _ := b.LastEventID()
+	if len(evs) != 3 || evs[2].ID != last || evs[0].ID != last-2 {
+		t.Fatalf("log: %+v", evs)
+	}
+
+	resp, err = http.Get(srv.URL + fmt.Sprintf("/api/events?unnamed=1&since=%d", last-1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	sc := bufio.NewScanner(resp.Body)
+	var lines []string
+	for sc.Scan() && len(lines) < 3 {
+		if l := sc.Text(); l != "" && !strings.HasPrefix(l, ":") {
+			lines = append(lines, l)
+		}
+		if len(lines) == 2 {
+			break
+		}
+	}
+	if len(lines) != 2 || lines[0] != fmt.Sprintf("id: %d", last) || !strings.HasPrefix(lines[1], "data: ") {
+		t.Fatalf("unnamed stream: %q", lines)
 	}
 }

@@ -13,7 +13,10 @@ import (
 	"github.com/0xdewald/dotfiles/crew/internal/board"
 )
 
-// Handler returns the HTTP API for b.
+// Build is the crew build serving the API, shown on the dashboard (set by crew serve).
+var Build = "dev"
+
+// Handler returns the HTTP API for b, and the dashboard at /.
 func Handler(b *board.Board) http.Handler {
 	s := &server{b: b, poll: 500 * time.Millisecond}
 	m := http.NewServeMux()
@@ -209,6 +212,22 @@ func Handler(b *board.Board) http.Handler {
 		return b.Document(id, true)
 	}))
 	m.HandleFunc("GET /api/events", s.events)
+	// the newest events as JSON (oldest first), for a client's first screen: ?limit=N (default 300)
+	m.HandleFunc("GET /api/log", s.wrap(func(r *http.Request) (any, error) {
+		limit := 300
+		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+			limit = min(n, 5000)
+		}
+		last, err := b.LastEventID()
+		if err != nil {
+			return nil, err
+		}
+		return b.Events(max(0, last-int64(limit)), limit)
+	}))
+	m.HandleFunc("GET /api/version", s.wrap(func(r *http.Request) (any, error) {
+		return map[string]string{"build": Build}, nil
+	}))
+	m.HandleFunc("GET /{$}", dashboard)
 	return m
 }
 
@@ -265,7 +284,9 @@ func decode(r *http.Request, v any) error {
 }
 
 // events streams new event rows as SSE. ?since=ID replays from there;
-// default is "from now". Last-Event-ID is honoured on reconnect.
+// default is "from now". Last-Event-ID is honoured on reconnect. Each event is
+// named by its type; ?unnamed=1 sends them unnamed instead, so a browser's
+// onmessage gets every type (the dashboard).
 func (s *server) events(w http.ResponseWriter, r *http.Request) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
@@ -278,6 +299,7 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 			since, _ = s.b.LastEventID()
 		}
 	}
+	unnamed := r.URL.Query().Get("unnamed") == "1"
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	fmt.Fprint(w, ": crew events\n\n")
@@ -291,7 +313,11 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, e := range evs {
 			j, _ := json.Marshal(e)
-			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", e.ID, e.Type, j)
+			if unnamed {
+				fmt.Fprintf(w, "id: %d\ndata: %s\n\n", e.ID, j)
+			} else {
+				fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", e.ID, e.Type, j)
+			}
 			since = e.ID
 		}
 		if len(evs) > 0 {

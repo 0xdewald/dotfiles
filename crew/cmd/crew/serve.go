@@ -55,6 +55,7 @@ func (a *app) serve(args []string) error {
 			a.b.Sweep()
 		}
 	}()
+	api.Build = build()
 	return http.Serve(ln, api.Handler(a.b))
 }
 

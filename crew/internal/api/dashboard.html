@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crew</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --line: #e4e4df; --text: #1f2328; --dim: #6b6f76; --faint: #9a9ea5;
+  --accent: #5b5bd6; --accent-soft: #ececfb;
+  --ok: #1a7f4b; --ok-soft: #e3f4ea; --info: #1f6feb; --info-soft: #e5efff;
+  --warn: #9a6700; --warn-soft: #fbf1d9; --bad: #c4314b; --bad-soft: #fbe6ea; --mute-soft: #eeeeea;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15161a; --panel: #1c1d22; --line: #2c2e35; --text: #e6e7ea; --dim: #a0a4ad; --faint: #6c7079;
+    --accent: #9b9bf5; --accent-soft: #26264a;
+    --ok: #4cc38a; --ok-soft: #173326; --info: #6ea8fe; --info-soft: #172a47;
+    --warn: #e3b341; --warn-soft: #3a2f12; --bad: #f47088; --bad-soft: #3d1a22; --mute-soft: #26272d;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); }
+header { display: flex; align-items: center; gap: 14px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0; letter-spacing: .02em; }
+.live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.live.on i { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.build { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+.counts { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.count { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--mute-soft); color: var(--dim); }
+.count b { color: var(--text); font-weight: 600; }
+.count.alert { background: var(--bad-soft); color: var(--bad); } .count.alert b { color: var(--bad); }
+nav { display: flex; gap: 4px; padding: 10px 24px 0; border-bottom: 1px solid var(--line); background: var(--panel); overflow-x: auto; }
+nav button { border: 0; background: none; padding: 8px 12px; font: inherit; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+nav button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+nav button .n { font-size: 11px; color: var(--faint); margin-left: 4px; }
+main { padding: 20px 24px 40px; max-width: 1400px; margin: 0 auto; }
+.bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.bar input, .bar select { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
+.bar input { min-width: 220px; flex: 1; max-width: 360px; }
+.bar .hint { color: var(--faint); font-size: 12px; margin-left: auto; }
+.table { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+tbody tr { cursor: pointer; } tbody tr:hover td { background: var(--bg); }
+tr.open td { background: var(--bg); }
+td.text { max-width: 560px; }
+.clip { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--dim); }
+tr.open .clip { display: block; -webkit-line-clamp: unset; white-space: pre-wrap; color: var(--text); }
+.mono { font-family: var(--mono); font-size: 12px; }
+.dim { color: var(--dim); } .faint { color: var(--faint); }
+.when { white-space: nowrap; color: var(--dim); font-size: 12px; }
+.pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; background: var(--mute-soft); color: var(--dim); }
+.pill.working, .pill.delivered, .pill.answered { background: var(--info-soft); color: var(--info); }
+.pill.idle, .pill.acked { background: var(--ok-soft); color: var(--ok); }
+.pill.needs-input, .pill.pending, .pill.starting { background: var(--warn-soft); color: var(--warn); }
+.pill.awaiting-decision, .pill.open { background: var(--bad-soft); color: var(--bad); }
+.att { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--accent); background: var(--accent-soft); padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.name { font-weight: 600; white-space: nowrap; }
+.arrow { color: var(--faint); margin: 0 4px; }
+.rej { color: var(--bad); } .acc { color: var(--ok); }
+.empty { padding: 28px; text-align: center; color: var(--faint); }
+.detail { padding: 4px 0 2px; display: grid; gap: 4px; }
+.detail .k { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
+pre.data { margin: 0; font: 12px/1.4 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--dim); }
+.ev-type { font-family: var(--mono); font-size: 12px; }
+.ev-type.msg { color: var(--info); } .ev-type.decision { color: var(--bad); } .ev-type.agent { color: var(--accent); } .ev-type.hook { color: var(--faint); }
+.err { margin: 12px 0; padding: 10px 12px; border-radius: 8px; background: var(--bad-soft); color: var(--bad); display: none; }
+@media (max-width: 720px) {
+  header, nav, main { padding-left: 16px; padding-right: 16px; }
+  .counts { margin-left: 0; }
+  .hide-sm { display: none; }
+  .bar input { min-width: 0; max-width: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>crew</h1>
+  <span class="live" id="live"><i></i><span>connecting</span></span>
+  <span class="build" id="build"></span>
+  <div class="counts" id="counts"></div>
+</header>
+<nav id="tabs">
+  <button data-tab="agents">Agents<span class="n" id="n-agents"></span></button>
+  <button data-tab="messages">Messages<span class="n" id="n-messages"></span></button>
+  <button data-tab="decisions">Decisions<span class="n" id="n-decisions"></span></button>
+  <button data-tab="events">Events<span class="n" id="n-events"></span></button>
+</nav>
+<main>
+  <div class="err" id="err"></div>
+  <section id="agents"></section>
+  <section id="messages"></section>
+  <section id="decisions"></section>
+  <section id="events"></section>
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const store = { get(k, d) { try { return localStorage.getItem("crew." + k) ?? d; } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem("crew." + k, v); } catch (e) {} } };
+
+const state = { agents: [], messages: [], decisions: [], events: [], via: {}, open: new Set(),
+  tab: ["agents", "messages", "decisions", "events"].includes(location.hash.slice(1)) ? location.hash.slice(1) : store.get("tab", "agents"), q: { messages: "", decisions: "", events: "" },
+  agent: { messages: "", decisions: "", events: "" }, decStatus: store.get("decStatus", "all"), evType: "" };
+
+function ago(ts) {
+  if (!ts) return "";
+  const s = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (s < 45) return "just now";
+  if (s < 3600) return Math.round(s / 60) + "m ago";
+  if (s < 86400) return Math.round(s / 3600) + "h ago";
+  return Math.round(s / 86400) + "d ago";
+}
+const when = ts => ts ? `<span class="when" title="${esc(new Date(ts).toLocaleString())}">${ago(ts)}</span>` : `<span class="faint">–</span>`;
+const pill = s => `<span class="pill ${esc(s)}">${esc(s)}</span>`;
+const agentName = id => (state.agents.find(a => a.id === id) || {}).name || (id ? "#" + id : "");
+
+async function get(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(path + ": " + r.status);
+  return r.json();
+}
+function showErr(e) { const el = $("err"); el.textContent = e ? String(e.message || e) : ""; el.style.display = e ? "block" : "none"; }
+
+// ---- loading
+async function loadAgents() { state.agents = await get("/api/agents") || []; }
+async function loadMessages() { state.messages = (await get("/api/messages") || []).reverse(); }
+async function loadDecisions() { state.decisions = (await get("/api/decisions?status=all") || []).reverse(); }
+async function loadEvents() {
+  const evs = await get("/api/log?limit=1000") || [];
+  state.events = evs.reverse();
+  state.via = {};
+  for (const e of evs) noteVia(e);
+}
+function noteVia(e) {
+  if (e.type !== "msg.deliver" || !e.data) return;
+  for (const id of e.data.message_ids || []) state.via[id] = e.data.via || (e.data.resumed ? "resume" : "");
+}
+
+// ---- rendering
+function filterBar(kind, extra) {
+  const names = [...new Set(state.agents.map(a => a.name))];
+  return `<div class="bar">
+    <input type="search" placeholder="Search" value="${esc(state.q[kind])}" data-q="${kind}">
+    <select data-agent="${kind}"><option value="">All agents</option>${names.map(n =>
+      `<option${state.agent[kind] === n ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>
+    ${extra || ""}<span class="hint">click a row for the full text</span></div>`;
+}
+const match = (kind, ...fields) => {
+  const q = state.q[kind].toLowerCase();
+  return !q || fields.some(f => String(f ?? "").toLowerCase().includes(q));
+};
+function table(head, rows, emptyText) {
+  if (!rows.length) return `<div class="table"><div class="empty">${esc(emptyText)}</div></div>`;
+  return `<div class="table"><table><thead><tr>${head.map(h => `<th class="${h[1] || ""}">${h[0]}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+}
+const row = (key, cells) => `<tr data-key="${esc(key)}" class="${state.open.has(key) ? "open" : ""}">${cells}</tr>`;
+
+function renderAgents() {
+  const rows = state.agents.map(a => row("a" + a.id, `
+    <td><span class="name">${esc(a.name)}</span><div class="faint mono">${esc(a.role)}${a.model ? " · " + esc(a.model) : ""}</div></td>
+    <td>${pill(a.status)}${a.attached ? ` <span class="att" title="open in Neovim">● attached</span>` : ""}</td>
+    <td class="hide-sm">${esc(a.stage || "")}<div class="faint mono">${esc(a.branch || "")}</div></td>
+    <td class="hide-sm">${esc(a.slot || "–")}<div class="faint mono">+${a.port_offset || 0}</div></td>
+    <td>${a.pending ? `<span class="pill pending">${a.pending}</span>` : `<span class="faint">0</span>`}</td>
+    <td>${a.decisions ? `<span class="pill open">${a.decisions}</span>` : `<span class="faint">0</span>`}</td>
+    <td class="text"><div class="clip">${esc(a.last_message || "")}</div>${state.open.has("a" + a.id) ? agentDetail(a) : ""}</td>
+    <td>${when(a.updated)}</td>`));
+  $("agents").innerHTML = table([["Agent"], ["Status"], ["Item", "hide-sm"], ["Slot", "hide-sm"], ["Msgs"], ["Decisions"], ["Last message"], ["Updated"]],
+    rows, "No agents yet. Start one with crew agent start ITEM.");
+}
+function agentDetail(a) {
+  const evs = state.events.filter(e => e.agent_id === a.id && !e.type.startsWith("hook.")).slice(0, 8);
+  return `<div class="detail" style="margin-top:10px"><span class="k">folder</span><span class="mono">${esc(a.dir || "")}</span>
+    <span class="k">session</span><span class="mono">${esc(a.session_id || "–")}${a.bg_id ? " · claude attach " + esc(a.bg_id) : ""}</span>
+    <span class="k">recent</span>${evs.map(e => `<span class="mono">${ago(e.ts)} · ${esc(e.type)}</span>`).join("") || `<span class="faint">nothing yet</span>`}</div>`;
+}
+
+function renderMessages() {
+  const list = state.messages.filter(m => (!state.agent.messages || m.to === state.agent.messages || m.from === state.agent.messages)
+    && match("messages", m.text, m.from, m.to, m.kind));
+  const rows = list.map(m => row("m" + m.id, `
+    <td class="mono faint">${m.id}</td>
+    <td>${when(m.created)}</td>
+    <td style="white-space:nowrap">${esc(m.from)}<span class="arrow">→</span><span class="name">${esc(m.to || (m.item_id ? "item " + m.item_id : "–"))}</span></td>
+    <td class="hide-sm">${esc(m.kind)}</td>
+    <td>${pill(m.status)}${state.via[m.id] ? `<div class="faint mono">via ${esc(state.via[m.id])}</div>` : ""}</td>
+    <td class="text"><div class="clip">${esc(m.text)}</div></td>`));
+  $("messages").innerHTML = filterBar("messages") + table([["#"], ["Sent"], ["From → to"], ["Kind", "hide-sm"], ["Status"], ["Text"]],
+    rows, state.messages.length ? "No messages match." : "No messages yet.");
+}
+
+function outcome(d) {
+  if (d.status !== "answered") return "";
+  if (d.recommendation && d.answer === d.recommendation) return `<span class="acc">✓ accepted</span>`;
+  if (d.recommendation && (d.answer || "").startsWith("Rejected: " + d.recommendation)) return `<span class="rej">✗ rejected</span>`;
+  if ((d.options || []).includes(d.answer)) return `<span class="dim">chose an option</span>`;
+  return `<span class="dim">own answer</span>`;
+}
+function renderDecisions() {
+  const list = state.decisions.filter(d => (state.decStatus === "all" || d.status === state.decStatus)
+    && (!state.agent.decisions || d.agent === state.agent.decisions) && match("decisions", d.question, d.answer, d.recommendation, d.reason));
+  const sel = `<select data-decstatus>${["all", "open", "answered", "cancelled"].map(s =>
+    `<option${state.decStatus === s ? " selected" : ""}>${s}</option>`).join("")}</select>`;
+  const rows = list.map(d => row("d" + d.id, `
+    <td class="mono faint">${d.id}</td>
+    <td>${when(d.created)}</td>
+    <td><span class="name">${esc(d.agent)}</span>${d.item_id ? `<div class="faint">item ${d.item_id}</div>` : ""}</td>
+    <td>${pill(d.status)}<div>${outcome(d)}</div></td>
+    <td class="text"><div class="clip">${esc(d.question)}</div>${state.open.has("d" + d.id) ? decisionDetail(d) : ""}</td>
+    <td class="text hide-sm"><div class="clip">${d.status === "answered" ? esc(d.answer) : `<span class="faint">recommends: </span>` + esc(d.recommendation || "–")}</div></td>
+    <td>${d.answered ? when(d.answered) + `<div class="faint">${esc(d.answered_by || "")}</div>` : `<span class="faint">–</span>`}</td>`));
+  $("decisions").innerHTML = filterBar("decisions", sel) + table([["#"], ["Asked"], ["Agent"], ["Status"], ["Question"], ["Answer", "hide-sm"], ["Answered"]],
+    rows, state.decisions.length ? "No decisions match." : "No decisions yet. Agents ask with the crew ask_decision tool.");
+}
+function decisionDetail(d) {
+  return `<div class="detail" style="margin-top:10px">
+    ${(d.options || []).length ? `<span class="k">options</span>${d.options.map(o => `<span>${o === d.recommendation ? "★ " : "· "}${esc(o)}</span>`).join("")}` : ""}
+    ${d.recommendation ? `<span class="k">recommendation</span><span>${esc(d.recommendation)}</span>` : ""}
+    ${d.reason ? `<span class="k">why</span><span class="dim">${esc(d.reason)}</span>` : ""}
+    ${d.status === "answered" ? `<span class="k">answer</span><span>${esc(d.answer)}</span>` : ""}
+    <span class="k">answer it</span><span class="mono">crew decision answer ${d.id} --accept | --reject "why" | "your answer"</span></div>`;
+}
+
+function renderEvents() {
+  const types = [...new Set(state.events.map(e => e.type.split(".")[0]))].sort();
+  const sel = `<select data-evtype><option value="">All types</option>${types.map(t =>
+    `<option${state.evType === t ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
+  const list = state.events.filter(e => (!state.evType || e.type.startsWith(state.evType + "."))
+    && (!state.agent.events || agentName(e.agent_id) === state.agent.events)
+    && match("events", e.type, JSON.stringify(e.data))).slice(0, 500);
+  const rows = list.map(e => row("e" + e.id, `
+    <td class="mono faint">${e.id}</td>
+    <td>${when(e.ts)}</td>
+    <td><span class="ev-type ${esc(e.type.split(".")[0])}">${esc(e.type)}</span></td>
+    <td>${esc(agentName(e.agent_id))}${e.item_id ? `<div class="faint">item ${e.item_id}</div>` : ""}</td>
+    <td class="text">${state.open.has("e" + e.id) ? `<pre class="data">${esc(JSON.stringify(e.data, null, 2))}</pre>` : `<div class="clip mono">${esc(summary(e))}</div>`}</td>`));
+  $("events").innerHTML = filterBar("events", sel) + table([["#"], ["When"], ["Type"], ["Agent"], ["Data"]], rows, "No events match.");
+}
+function summary(e) {
+  const d = e.data || {};
+  if (d.last_message) return d.last_message;
+  if (d.question) return d.question;
+  if (e.type === "msg.deliver") return `messages ${(d.message_ids || []).join(", ")} via ${d.via || (d.resumed ? "resume" : "?")}${d.mailman_error ? " · mailman: " + d.mailman_error : ""}`;
+  return JSON.stringify(d);
+}
+
+function renderHeader() {
+  const c = s => state.agents.filter(a => a.status === s).length;
+  const open = state.decisions.filter(d => d.status === "open").length;
+  const pending = state.messages.filter(m => m.status === "pending").length;
+  const att = state.agents.filter(a => a.attached).length;
+  $("counts").innerHTML = [
+    ["working", c("working")], ["idle", c("idle")], ["attached", att],
+    ["needs input", c("needs-input"), c("needs-input") > 0], ["open decisions", open, open > 0], ["pending messages", pending, pending > 0],
+  ].map(([k, v, alert]) => `<span class="count${alert ? " alert" : ""}"><b>${v}</b> ${k}</span>`).join("");
+  $("n-agents").textContent = state.agents.length;
+  $("n-messages").textContent = state.messages.length;
+  $("n-decisions").textContent = open ? open + " open" : state.decisions.length;
+  $("n-events").textContent = state.events.length;
+}
+
+const renderers = { agents: renderAgents, messages: renderMessages, decisions: renderDecisions, events: renderEvents };
+function render() {
+  renderHeader();
+  for (const t of Object.keys(renderers)) $(t).style.display = t === state.tab ? "" : "none";
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === state.tab));
+  // keep focus and caret in the search box across re-renders
+  const f = document.activeElement, q = f && f.dataset && f.dataset.q, pos = q ? f.selectionStart : 0;
+  renderers[state.tab]();
+  if (q) { const el = document.querySelector(`[data-q="${q}"]`); if (el) { el.focus(); el.setSelectionRange(pos, pos); } }
+}
+
+// ---- interaction
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.tab = b.dataset.tab; store.set("tab", state.tab); history.replaceState(null, "", "#" + state.tab); render();
+});
+document.querySelector("main").addEventListener("click", e => {
+  const tr = e.target.closest("tbody tr"); if (!tr || window.getSelection().toString()) return;
+  const k = tr.dataset.key; state.open.has(k) ? state.open.delete(k) : state.open.add(k); render();
+});
+document.querySelector("main").addEventListener("input", e => {
+  const t = e.target;
+  if (t.dataset.q) { state.q[t.dataset.q] = t.value; render(); }
+});
+document.querySelector("main").addEventListener("change", e => {
+  const t = e.target;
+  if (t.dataset.agent !== undefined) state.agent[t.dataset.agent] = t.value;
+  else if (t.hasAttribute("data-decstatus")) { state.decStatus = t.value; store.set("decStatus", t.value); }
+  else if (t.hasAttribute("data-evtype")) state.evType = t.value;
+  else return;
+  render();
+});
+
+// ---- live updates: every board change is an event; reload what it touched
+const dirty = new Set();
+let timer;
+function touch(type) {
+  const kind = type.split(".")[0];
+  dirty.add("agents");
+  if (kind === "msg") dirty.add("messages");
+  if (kind === "decision") { dirty.add("decisions"); dirty.add("messages"); }
+  clearTimeout(timer);
+  timer = setTimeout(flush, 250);
+}
+async function flush() {
+  const jobs = [...dirty].map(k => ({ agents: loadAgents, messages: loadMessages, decisions: loadDecisions })[k]);
+  dirty.clear();
+  try { await Promise.all(jobs.map(f => f())); showErr(null); } catch (e) { showErr(e); }
+  render();
+}
+function connect(since) {
+  const live = $("live");
+  const es = new EventSource("/api/events?unnamed=1" + (since ? "&since=" + since : ""));
+  es.onopen = () => { live.classList.add("on"); live.lastChild.textContent = "live"; };
+  es.onerror = () => { live.classList.remove("on"); live.lastChild.textContent = "reconnecting"; };
+  es.onmessage = msg => {
+    let e; try { e = JSON.parse(msg.data); } catch (err) { return; }
+    if (state.events.length && state.events[0].id >= e.id) return;
+    state.events.unshift(e);
+    if (state.events.length > 2000) state.events.length = 2000;
+    noteVia(e);
+    touch(e.type);
+  };
+  return es;
+}
+
+async function start() {
+  try {
+    const [v] = await Promise.all([get("/api/version").catch(() => ({})), loadAgents(), loadMessages(), loadDecisions(), loadEvents()]);
+    $("build").textContent = v.build ? "build " + v.build : "";
+    showErr(null);
+  } catch (e) { showErr(e); }
+  render();
+  connect(state.events.length ? state.events[0].id : 0);
+  setInterval(() => { render(); }, 30000); // keep "5m ago" current
+  setInterval(() => { ["agents", "messages", "decisions"].forEach(k => dirty.add(k)); flush(); }, 20000); // safety net
+}
+start();
+</script>
+</body>
+</html>
